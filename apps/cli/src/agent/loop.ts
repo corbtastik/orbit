@@ -10,6 +10,7 @@ import {
   formatUsage,
   formatError,
   renderMarkdown,
+  colors,
 } from "../ui/index.js";
 
 /** Options for the agent loop. */
@@ -23,6 +24,7 @@ export interface AgentLoopOptions {
   orgId?: string;
   groupId?: string;
   verbose?: boolean;
+  signal?: AbortSignal;
 }
 
 /** Pre-build tool definitions once for all requests. */
@@ -55,6 +57,7 @@ export async function runAgentTurn(
     orgId,
     groupId,
     verbose,
+    signal,
   } = options;
 
   const tools = buildToolDefinitions();
@@ -66,15 +69,20 @@ export async function runAgentTurn(
   let turns = 0;
 
   while (turns < maxToolTurns) {
+    if (signal?.aborted) {
+      spinner.stop();
+      return "[Cancelled]";
+    }
+
     turns++;
 
     // Collect streaming response
     const textChunks: string[] = [];
-    const toolCalls: { id: string; name: string; args: Record<string, unknown> }[] = [];
+    const toolCalls: { id: string; name: string; args: Record<string, unknown>; thoughtSignature?: string }[] = [];
     let usage: { inputTokens: number; outputTokens: number } | undefined;
     let isFirstText = true;
 
-    spinner.stop();
+    spinner.thinking();
 
     const stream = provider.chat({
       messages: conversation.getMessages(),
@@ -83,10 +91,12 @@ export async function runAgentTurn(
       model,
       maxTokens,
       temperature,
+      signal,
     });
 
     for await (const event of stream) {
       handleStreamEvent(event, {
+        spinner,
         textChunks,
         toolCalls,
         isFirstText,
@@ -98,6 +108,16 @@ export async function runAgentTurn(
 
     const fullText = textChunks.join("");
 
+    // Check if cancelled during streaming
+    if (signal?.aborted) {
+      spinner.stop();
+      if (fullText) {
+        process.stdout.write("\n");
+        conversation.addAssistantText(fullText + "\n\n[Response interrupted]");
+      }
+      return fullText || "[Cancelled]";
+    }
+
     // If we got tool calls, execute them and continue the loop
     if (toolCalls.length > 0) {
       // Build assistant content blocks
@@ -106,18 +126,31 @@ export async function runAgentTurn(
         assistantBlocks.push({ type: "text", text: fullText });
       }
       for (const tc of toolCalls) {
-        assistantBlocks.push({
+        const block: ContentBlock = {
           type: "tool_use",
           id: tc.id,
           name: tc.name,
           input: tc.args,
-        });
+        };
+        if (tc.thoughtSignature) block.thoughtSignature = tc.thoughtSignature;
+        assistantBlocks.push(block);
       }
       conversation.addAssistantBlocks(assistantBlocks);
 
       // Execute each tool call
       const resultBlocks: ContentBlock[] = [];
       for (const tc of toolCalls) {
+        if (signal?.aborted) {
+          spinner.stop();
+          resultBlocks.push({
+            type: "tool_result",
+            tool_use_id: tc.id,
+            content: "[Cancelled by user]",
+            is_error: true,
+          });
+          continue;
+        }
+
         const action = (tc.args.action as string) ?? "unknown";
         spinner.tool(tc.name, action);
 
@@ -172,8 +205,9 @@ export async function runAgentTurn(
 function handleStreamEvent(
   event: ChatEvent,
   ctx: {
+    spinner: SpinnerManager;
     textChunks: string[];
-    toolCalls: { id: string; name: string; args: Record<string, unknown> }[];
+    toolCalls: { id: string; name: string; args: Record<string, unknown>; thoughtSignature?: string }[];
     isFirstText: boolean;
     verbose?: boolean;
     onUsage: (u: { inputTokens: number; outputTokens: number }) => void;
@@ -183,6 +217,7 @@ function handleStreamEvent(
   switch (event.type) {
     case "text_delta":
       if (ctx.isFirstText) {
+        ctx.spinner.stop();
         console.log(); // blank line before response
         ctx.onFirstText();
       }
@@ -190,15 +225,21 @@ function handleStreamEvent(
       ctx.textChunks.push(event.text);
       break;
     case "tool_call":
-      ctx.toolCalls.push({ id: event.id, name: event.name, args: event.args });
+      ctx.spinner.stop();
+      ctx.toolCalls.push({ id: event.id, name: event.name, args: event.args, thoughtSignature: event.thoughtSignature });
       break;
     case "done":
+      ctx.spinner.stop();
       if (event.usage) {
         ctx.onUsage(event.usage);
       }
       break;
     case "error":
+      ctx.spinner.stop();
       console.error(formatError(event.error.message));
+      if (ctx.verbose && event.error.stack) {
+        console.error(colors.dim(event.error.stack));
+      }
       break;
   }
 }

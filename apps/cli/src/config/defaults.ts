@@ -41,7 +41,7 @@ export const LLM_DEFAULTS = {
 export const PROVIDER_MODEL_DEFAULTS: Record<string, string> = {
   anthropic: "claude-sonnet-4-20250514",
   openai: "gpt-4o",
-  google: "gemini-2.0-flash",
+  google: "gemini-2.5-flash",
   ollama: "llama3.1",
 };
 
