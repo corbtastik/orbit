@@ -1,20 +1,22 @@
-import { InputBuffer } from "./input-buffer.js";
 import { colors } from "./theme.js";
 
 export type SessionState = "idle" | "processing" | "aborting" | "exiting";
 
 /**
- * Manages the session lifecycle: abort controllers, input buffering,
- * and the state machine for interrupt handling.
+ * Manages the session lifecycle: abort controllers and the state machine
+ * for interrupt handling (Ctrl+C / Escape).
+ *
+ * Interrupt handling is delegated to the Prompt class (which owns readline).
+ * Session only manages state transitions and abort signals.
  */
 export class Session {
   private _state: SessionState = "idle";
   private abortController: AbortController | null = null;
-  private inputBuffer: InputBuffer;
   private lastCtrlCTime = 0;
+  private write: (text: string) => void;
 
-  constructor(inputBuffer: InputBuffer) {
-    this.inputBuffer = inputBuffer;
+  constructor(write?: (text: string) => void) {
+    this.write = write ?? ((t: string) => { process.stdout.write(t); });
   }
 
   get state(): SessionState {
@@ -26,27 +28,20 @@ export class Session {
   }
 
   /**
-   * Transition to processing state. Creates a fresh AbortController
-   * and starts the input buffer for keystroke capture.
+   * Transition to processing state. Creates a fresh AbortController.
    */
   startProcessing(): AbortSignal {
     this._state = "processing";
     this.abortController = new AbortController();
-
-    this.inputBuffer.start(() => this.handleInterrupt());
-
     return this.abortController.signal;
   }
 
   /**
    * Called when agent turn completes (normally or via abort).
-   * Stops the input buffer and returns any buffered text.
    */
-  endProcessing(): string {
+  endProcessing(): void {
     this._state = "idle";
-    const buffered = this.inputBuffer.stop();
     this.abortController = null;
-    return buffered;
   }
 
   /**
@@ -61,7 +56,7 @@ export class Session {
       case "processing":
         this._state = "aborting";
         this.abortController?.abort();
-        process.stdout.write(colors.dim("\n  Cancelled.\n"));
+        this.write(colors.dim("\n  Cancelled.\n"));
         break;
 
       case "aborting":
@@ -75,9 +70,7 @@ export class Session {
           this._state = "exiting";
         } else {
           this.lastCtrlCTime = now;
-          process.stdout.write(
-            colors.dim("\n  Press Ctrl+C again to exit.\n"),
-          );
+          this.write(colors.dim("\n  Press Ctrl+C again to exit.\n"));
         }
         break;
       }

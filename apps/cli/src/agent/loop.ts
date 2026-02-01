@@ -1,3 +1,4 @@
+import type { Writable } from "node:stream";
 import type { AtlasClient } from "@orbit/core";
 import type { LlmProvider, ContentBlock, ToolDefinition, ChatEvent } from "../providers/index.js";
 import { TOOL_REGISTRY, buildToolSchema, executeTool } from "../tools/index.js";
@@ -25,6 +26,12 @@ export interface AgentLoopOptions {
   groupId?: string;
   verbose?: boolean;
   signal?: AbortSignal;
+  /** Write function for streaming text fragments. */
+  write?: (text: string) => void;
+  /** Write function for complete lines (tool calls, usage, errors). */
+  writeLine?: (text: string) => void;
+  /** Stream for ora spinner (ScreenManager proxy or default). */
+  outputStream?: Writable;
 }
 
 /** Pre-build tool definitions once for all requests. */
@@ -58,11 +65,15 @@ export async function runAgentTurn(
     groupId,
     verbose,
     signal,
+    outputStream,
   } = options;
+
+  const write = options.write ?? ((t: string) => { process.stdout.write(t); });
+  const writeLine = options.writeLine ?? ((t: string) => { console.log(t); });
 
   const tools = buildToolDefinitions();
   const systemPrompt = buildSystemPrompt({ orgId, groupId });
-  const spinner = new SpinnerManager();
+  const spinner = new SpinnerManager(outputStream);
 
   conversation.addUser(userInput);
 
@@ -97,6 +108,8 @@ export async function runAgentTurn(
     for await (const event of stream) {
       handleStreamEvent(event, {
         spinner,
+        write,
+        writeLine,
         textChunks,
         toolCalls,
         isFirstText,
@@ -112,7 +125,7 @@ export async function runAgentTurn(
     if (signal?.aborted) {
       spinner.stop();
       if (fullText) {
-        process.stdout.write("\n");
+        write("\n");
         conversation.addAssistantText(fullText + "\n\n[Response interrupted]");
       }
       return fullText || "[Cancelled]";
@@ -157,9 +170,9 @@ export async function runAgentTurn(
         const result = await executeTool(client, tc.name, tc.args);
 
         spinner.stop();
-        console.log(formatToolCall(tc.name, action));
+        writeLine(formatToolCall(tc.name, action));
         if (verbose) {
-          console.log(formatToolResult(result.success, result.content));
+          writeLine(formatToolResult(result.success, result.content));
         }
 
         resultBlocks.push({
@@ -174,7 +187,7 @@ export async function runAgentTurn(
 
       // Show usage if verbose
       if (verbose && usage) {
-        console.log(formatUsage(usage.inputTokens, usage.outputTokens));
+        writeLine(formatUsage(usage.inputTokens, usage.outputTokens));
       }
 
       // Continue loop — LLM needs to process tool results
@@ -184,12 +197,12 @@ export async function runAgentTurn(
     // No tool calls — this is the final text response
     if (fullText) {
       // Newline after streamed text
-      process.stdout.write("\n");
+      write("\n");
       conversation.addAssistantText(fullText);
     }
 
     if (verbose && usage) {
-      console.log(formatUsage(usage.inputTokens, usage.outputTokens));
+      writeLine(formatUsage(usage.inputTokens, usage.outputTokens));
     }
 
     return fullText;
@@ -197,7 +210,7 @@ export async function runAgentTurn(
 
   // Safety valve: too many tool turns
   const msg = `Reached maximum tool turns (${maxToolTurns}). Stopping.`;
-  console.log(formatError(msg));
+  writeLine(formatError(msg));
   return msg;
 }
 
@@ -206,6 +219,8 @@ function handleStreamEvent(
   event: ChatEvent,
   ctx: {
     spinner: SpinnerManager;
+    write: (text: string) => void;
+    writeLine: (text: string) => void;
     textChunks: string[];
     toolCalls: { id: string; name: string; args: Record<string, unknown>; thoughtSignature?: string }[];
     isFirstText: boolean;
@@ -218,10 +233,10 @@ function handleStreamEvent(
     case "text_delta":
       if (ctx.isFirstText) {
         ctx.spinner.stop();
-        console.log(); // blank line before response
+        ctx.write("\n"); // blank line before response
         ctx.onFirstText();
       }
-      process.stdout.write(event.text);
+      ctx.write(event.text);
       ctx.textChunks.push(event.text);
       break;
     case "tool_call":
@@ -236,9 +251,9 @@ function handleStreamEvent(
       break;
     case "error":
       ctx.spinner.stop();
-      console.error(formatError(event.error.message));
+      ctx.writeLine(formatError(event.error.message));
       if (ctx.verbose && event.error.stack) {
-        console.error(colors.dim(event.error.stack));
+        ctx.writeLine(colors.dim(event.error.stack));
       }
       break;
   }
