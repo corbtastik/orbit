@@ -25,17 +25,26 @@ export class Prompt {
   /**
    * Read a line of input from the user.
    * Returns null if the prompt is closed (Ctrl+C / Ctrl+D).
+   * If prefill is provided, the prompt starts with that text pre-filled.
    */
-  async read(): Promise<string | null> {
+  async read(prefill?: string): Promise<string | null> {
     if (this.closed) return null;
 
     return new Promise<string | null>((resolve) => {
+      const onClose = () => resolve(null);
+
       this.rl.question(`${colors.primary(icons.prompt)} `, (answer) => {
+        this.rl.removeListener("close", onClose);
         resolve(answer.trim() || null);
       });
 
+      // Pre-fill the line with buffered input from previous turn
+      if (prefill) {
+        this.rl.write(prefill);
+      }
+
       // Handle close during question
-      this.rl.once("close", () => resolve(null));
+      this.rl.once("close", onClose);
     });
   }
 

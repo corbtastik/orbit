@@ -5,7 +5,7 @@ import { AtlasClient, resolveConfig } from "@orbit/core";
 import { resolveCliConfig } from "./config/index.js";
 import { createProvider } from "./providers/index.js";
 import { runAgentTurn, createConversation } from "./agent/index.js";
-import { printBanner, Prompt, formatError, colors } from "./ui/index.js";
+import { printBanner, Prompt, InputBuffer, Session, formatError, colors } from "./ui/index.js";
 
 /** Parse CLI arguments. */
 function parseCliArgs() {
@@ -150,16 +150,27 @@ async function main(): Promise<void> {
 
   const conversation = createConversation();
   const prompt = new Prompt();
+  const inputBuffer = new InputBuffer();
+  const session = new Session(inputBuffer);
 
-  // Graceful shutdown
+  // SIGINT handler — delegates to session state machine
   process.on("SIGINT", () => {
-    console.log(colors.dim("\n\nGoodbye."));
-    prompt.close();
-    process.exit(0);
+    if (session.state === "idle") {
+      session.handleInterrupt();
+      if (session.shouldExit) {
+        console.log(colors.dim("\n\nGoodbye."));
+        prompt.close();
+        process.exit(0);
+      }
+    }
+    // During processing, the InputBuffer handles Ctrl+C via raw mode
   });
 
-  while (true) {
-    const input = await prompt.read();
+  let prefill: string | undefined;
+
+  while (!session.shouldExit) {
+    const input = await prompt.read(prefill);
+    prefill = undefined;
 
     if (input === null) {
       // Ctrl+D or closed
@@ -172,16 +183,27 @@ async function main(): Promise<void> {
       if (handleCommand(input, conversation)) continue;
     }
 
+    const signal = session.startProcessing();
     prompt.pause();
 
     try {
-      await runAgentTurn(input, conversation, agentOptions);
+      await runAgentTurn(input, conversation, { ...agentOptions, signal });
     } catch (err: unknown) {
-      console.error(formatError(err instanceof Error ? err.message : String(err)));
+      if (err instanceof Error && err.name === "AbortError") {
+        // Already handled by session
+      } else {
+        console.error(formatError(err instanceof Error ? err.message : String(err)));
+      }
     }
 
     console.log(); // blank line between turns
+    prefill = session.endProcessing() || undefined;
     prompt.resume();
+
+    if (session.shouldExit) {
+      console.log(colors.dim("Goodbye."));
+      break;
+    }
   }
 
   prompt.close();

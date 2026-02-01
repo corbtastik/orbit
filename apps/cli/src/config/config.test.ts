@@ -1,6 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resolveCliConfig, loadConfigFile } from "./config.js";
 
+// Prevent real ~/.orbit-ai/config.json from leaking into tests
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+  return {
+    ...actual,
+    existsSync: (path: string) => {
+      if (String(path).includes(".orbit-ai/config.json")) return false;
+      return actual.existsSync(path);
+    },
+  };
+});
+
 describe("loadConfigFile", () => {
   it("returns empty object for non-existent file", () => {
     const result = loadConfigFile("/tmp/orbit-ai-no-such-file.json");
@@ -164,7 +176,7 @@ describe("resolveCliConfig", () => {
     expect(openai.llm.model).toBe("gpt-4o");
 
     const google = resolveCliConfig({ provider: "google" });
-    expect(google.llm.model).toBe("gemini-2.0-flash");
+    expect(google.llm.model).toBe("gemini-2.5-flash");
 
     const ollama = resolveCliConfig({ provider: "ollama" });
     expect(ollama.llm.model).toBe("llama3.1");

@@ -25,18 +25,21 @@ export class AnthropicProvider implements LlmProvider {
     const messages = request.messages.map((m) => toAnthropicMessage(m));
 
     try {
-      const stream = this.client.messages.stream({
-        model: request.model ?? this.defaultModel,
-        max_tokens: request.maxTokens ?? 4096,
-        temperature: request.temperature ?? 0,
-        system: request.system,
-        messages,
-        tools: request.tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          input_schema: t.input_schema as Anthropic.Tool.InputSchema,
-        })),
-      });
+      const stream = this.client.messages.stream(
+        {
+          model: request.model ?? this.defaultModel,
+          max_tokens: request.maxTokens ?? 4096,
+          temperature: request.temperature ?? 0,
+          system: request.system,
+          messages,
+          tools: request.tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            input_schema: t.input_schema as Anthropic.Tool.InputSchema,
+          })),
+        },
+        request.signal ? { signal: request.signal } : undefined,
+      );
 
       // Collect tool calls as they arrive
       const pendingToolCalls: Map<number, { id: string; name: string; jsonChunks: string[] }> = new Map();
@@ -96,6 +99,10 @@ export class AnthropicProvider implements LlmProvider {
         }
       }
     } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") {
+        yield { type: "done", stopReason: "cancelled" };
+        return;
+      }
       yield {
         type: "error",
         error: err instanceof Error ? err : new Error(String(err)),

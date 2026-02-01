@@ -42,22 +42,25 @@ export class OpenAiProvider implements LlmProvider {
     const messages = toOpenAiMessages(request.messages, request.system);
 
     try {
-      const stream = await this.client.chat.completions.create({
-        model: request.model ?? this.defaultModel,
-        max_tokens: request.maxTokens ?? 4096,
-        temperature: request.temperature ?? 0,
-        messages,
-        tools: request.tools.map((t) => ({
-          type: "function" as const,
-          function: {
-            name: t.name,
-            description: t.description,
-            parameters: t.input_schema,
-          },
-        })),
-        stream: true,
-        stream_options: { include_usage: true },
-      });
+      const stream = await this.client.chat.completions.create(
+        {
+          model: request.model ?? this.defaultModel,
+          max_tokens: request.maxTokens ?? 4096,
+          temperature: request.temperature ?? 0,
+          messages,
+          tools: request.tools.map((t) => ({
+            type: "function" as const,
+            function: {
+              name: t.name,
+              description: t.description,
+              parameters: t.input_schema,
+            },
+          })),
+          stream: true,
+          stream_options: { include_usage: true },
+        },
+        request.signal ? { signal: request.signal } : undefined,
+      );
 
       const pendingToolCalls: Map<
         number,
@@ -159,10 +162,23 @@ export class OpenAiProvider implements LlmProvider {
         }
       }
     } catch (err: unknown) {
-      yield {
-        type: "error",
-        error: err instanceof Error ? err : new Error(String(err)),
-      };
+      // Abort is not an error — yield a clean cancellation event
+      if (err instanceof Error && err.name === "AbortError") {
+        yield { type: "done", stopReason: "cancelled" };
+        return;
+      }
+      // Enrich connection errors with the URL for debugging
+      let error: Error;
+      if (err instanceof Error) {
+        const cause = (err as { cause?: Error }).cause;
+        const detail = cause ? `: ${cause.message}` : "";
+        error = new Error(
+          `${err.message}${detail} (provider: ${this.name}, baseURL: ${this.client.baseURL})`,
+        );
+      } else {
+        error = new Error(String(err));
+      }
+      yield { type: "error", error };
     }
   }
 }

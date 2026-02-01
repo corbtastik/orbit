@@ -11,6 +11,7 @@ export class SpinnerManager {
     this.spinner = ora({
       color: "yellow",
       spinner: "dots",
+      discardStdin: false,
     });
   }
 

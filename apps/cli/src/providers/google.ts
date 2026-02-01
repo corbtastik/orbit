@@ -34,7 +34,7 @@ export class GoogleProvider implements LlmProvider {
       (t) => ({
         name: t.name,
         description: t.description,
-        parameters: t.input_schema as unknown as FunctionDeclaration["parameters"],
+        parameters: sanitizeSchema(t.input_schema) as unknown as FunctionDeclaration["parameters"],
       }),
     );
 
@@ -51,7 +51,8 @@ export class GoogleProvider implements LlmProvider {
     const contents = toGeminiContents(request.messages);
 
     try {
-      const result = await model.generateContentStream({ contents });
+      const requestOptions = request.signal ? { signal: request.signal } : {};
+      const result = await model.generateContentStream({ contents }, requestOptions);
 
       let hasToolCalls = false;
 
@@ -66,11 +67,13 @@ export class GoogleProvider implements LlmProvider {
 
           if ("functionCall" in part && part.functionCall) {
             hasToolCalls = true;
+            const sig = (part as unknown as Record<string, unknown>).thoughtSignature as string | undefined;
             yield {
               type: "tool_call",
               id: randomUUID(),
               name: part.functionCall.name,
               args: (part.functionCall.args as Record<string, unknown>) ?? {},
+              ...(sig ? { thoughtSignature: sig } : {}),
             };
           }
         }
@@ -99,12 +102,35 @@ export class GoogleProvider implements LlmProvider {
           : undefined,
       };
     } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") {
+        yield { type: "done", stopReason: "cancelled" };
+        return;
+      }
       yield {
         type: "error",
         error: err instanceof Error ? err : new Error(String(err)),
       };
     }
   }
+}
+
+/**
+ * Recursively strip JSON Schema fields that Gemini doesn't support.
+ * Gemini's FunctionDeclaration schema rejects `additionalProperties`.
+ */
+function sanitizeSchema(obj: unknown): unknown {
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeSchema);
+  }
+  if (obj !== null && typeof obj === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      if (key === "additionalProperties") continue;
+      result[key] = sanitizeSchema(value);
+    }
+    return result;
+  }
+  return obj;
 }
 
 /**
@@ -154,12 +180,16 @@ function toGeminiContents(messages: ChatMessage[]): Content[] {
       if (block.type === "text") {
         parts.push({ text: block.text });
       } else if (block.type === "tool_use") {
-        parts.push({
+        const part: Part = {
           functionCall: {
             name: block.name,
             args: block.input,
           },
-        });
+        };
+        if (block.thoughtSignature) {
+          (part as unknown as Record<string, unknown>).thoughtSignature = block.thoughtSignature;
+        }
+        parts.push(part);
       } else if (block.type === "tool_result") {
         const name = idToName.get(block.tool_use_id) ?? "unknown";
         parts.push({

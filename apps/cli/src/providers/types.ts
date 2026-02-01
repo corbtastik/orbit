@@ -8,7 +8,7 @@ export interface ChatMessage {
 
 export type ContentBlock =
   | { type: "text"; text: string }
-  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown>; thoughtSignature?: string }
   | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean };
 
 /**
@@ -30,6 +30,7 @@ export interface ChatRequest {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -37,7 +38,7 @@ export interface ChatRequest {
  */
 export type ChatEvent =
   | { type: "text_delta"; text: string }
-  | { type: "tool_call"; id: string; name: string; args: Record<string, unknown> }
+  | { type: "tool_call"; id: string; name: string; args: Record<string, unknown>; thoughtSignature?: string }
   | { type: "tool_calls_done" }
   | { type: "done"; stopReason: string; usage?: { inputTokens: number; outputTokens: number } }
   | { type: "error"; error: Error };
