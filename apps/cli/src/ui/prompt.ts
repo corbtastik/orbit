@@ -79,6 +79,9 @@ export class Prompt {
     // Set up keypress listener for command palette and Escape detection
     this.setupKeypressHandler();
 
+    // Override _ttyWrite to intercept arrow keys / Enter / Tab when palette is visible
+    this.setupPaletteKeyOverride();
+
     // Start the first question immediately — the prompt is always active.
     this.askQuestion();
   }
@@ -169,6 +172,62 @@ export class Prompt {
         this.askQuestion();
       }
     });
+  }
+
+  /**
+   * Override readline's internal _ttyWrite to intercept keys when the
+   * command palette is visible.  When visible:
+   *   Up/Down  → navigate palette (suppress history scroll)
+   *   Enter    → replace line with selected command, then submit
+   *   Tab      → complete line with selected command (no submit)
+   *   Escape   → hide palette (falls through to keypress handler)
+   */
+  private setupPaletteKeyOverride(): void {
+    if (!this.palette) return;
+
+    const rl = this.rl as unknown as {
+      _ttyWrite: (s: string, key: KeyInfo) => void;
+    };
+    const original = rl._ttyWrite.bind(this.rl);
+
+    rl._ttyWrite = (s: string, key: KeyInfo) => {
+      if (this.palette!.isVisible) {
+        if (key?.name === "up") {
+          this.palette!.moveUp();
+          return;
+        }
+        if (key?.name === "down") {
+          this.palette!.moveDown();
+          return;
+        }
+        if (key?.name === "return") {
+          const selected = this.palette!.getSelected();
+          if (selected) {
+            this.replaceLine(selected);
+          }
+          // Let Enter propagate to submit the line
+          original(s, key);
+          return;
+        }
+        if (key?.name === "tab") {
+          const selected = this.palette!.getSelected();
+          if (selected) {
+            this.replaceLine(selected);
+            this.palette!.update(selected);
+          }
+          // Don't propagate tab (avoid readline's default completer)
+          return;
+        }
+      }
+      original(s, key);
+    };
+  }
+
+  /** Replace the current readline input with new text. */
+  private replaceLine(text: string): void {
+    // Ctrl+U clears the line, then write new text
+    this.rl.write(null, { ctrl: true, name: "u" });
+    this.rl.write(text);
   }
 
   /** Set up keypress handler for command palette and Escape detection. */

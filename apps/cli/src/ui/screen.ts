@@ -16,10 +16,8 @@ const setScrollRegion = (top: number, bottom: number) =>
   `\x1b[${top};${bottom}r`;
 const resetScrollRegion = `\x1b[r`;
 const cursorTo = (row: number, col: number) => `\x1b[${row};${col}H`;
-const cursorSave = `\x1b7`;       // DEC save — used for readline cursor
-const cursorRestore = `\x1b8`;    // DEC restore
-const cursorSaveSCO = `\x1b[s`;   // SCO save — used for scroll region cursor
-const cursorRestoreSCO = `\x1b[u`; // SCO restore
+const cursorSave = `\x1b7`;
+const cursorRestore = `\x1b8`;
 const eraseLine = `\x1b[2K`;
 
 /** Strip ANSI escape codes for length calculation. */
@@ -37,8 +35,8 @@ function stripAnsi(text: string): string {
  *   row  N        — status bar
  *
  * When promptActive is true, readline owns the cursor at the prompt row.
- * Output writes temporarily switch to the scroll region using a dual
- * cursor-save strategy (DEC \x1b7 for readline, SCO \x1b[s for scroll).
+ * Output writes save the readline cursor (\x1b7), position explicitly at
+ * the tracked scroll column, write, then restore (\x1b8).
  */
 export class ScreenManager {
   private rows = 0;
@@ -54,6 +52,9 @@ export class ScreenManager {
    * save/restore the readline cursor around scroll region writes.
    */
   private _promptActive = false;
+
+  /** Tracked column position within the scroll region bottom row. */
+  private scrollCol = 1;
 
   /** Proxy stream for ora — routes writes into the scroll region. */
   readonly outputStream: Writable;
@@ -136,17 +137,12 @@ export class ScreenManager {
    * Enable or disable prompt-active mode.
    *
    * When enabled, readline owns the cursor at the prompt row and output
-   * writes use dual cursor save/restore to write into the scroll region
-   * without disturbing the prompt.
+   * writes use cursorSave/cursorRestore + explicit cursorTo positioning
+   * to write into the scroll region without disturbing the prompt.
    */
   setPromptActive(active: boolean): void {
-    if (active && !this._promptActive && this.active) {
-      // Save initial scroll region cursor position using the SCO slot.
-      // DEC save/restore is reserved for readline cursor.
-      process.stdout.write(cursorSave);            // save readline cursor (DEC)
-      process.stdout.write(cursorTo(this.scrollBottom, 1));
-      process.stdout.write(cursorSaveSCO);          // save scroll cursor (SCO)
-      process.stdout.write(cursorRestore);           // restore readline cursor (DEC)
+    if (active) {
+      this.scrollCol = 1;
     }
     this._promptActive = active;
   }
@@ -177,9 +173,13 @@ export class ScreenManager {
   /**
    * Position cursor at the prompt row for readline input.
    * Call before rl.question().
+   *
+   * Re-renders the entire footer (separator + status bar) since readline's
+   * Enter echo may have corrupted those rows.
    */
   preparePromptRow(): void {
     if (!this.active) return;
+    this.renderFooter();
     process.stdout.write(cursorTo(this.promptRow, 1));
     process.stdout.write(eraseLine);
   }
@@ -234,22 +234,47 @@ export class ScreenManager {
   }
 
   /**
-   * Write data to the scroll region. When promptActive, uses dual
-   * cursor save/restore to preserve readline's cursor position.
+   * Write data to the scroll region.
    *
-   * DEC save (\x1b7) — readline cursor (prompt row)
-   * SCO save (\x1b[s) — scroll region cursor (output position)
+   * When promptActive, saves readline cursor with \x1b7, positions at
+   * the tracked (scrollBottom, scrollCol), writes, updates scrollCol,
+   * then restores readline cursor with \x1b8.
+   *
+   * Only a single cursor save slot is used, avoiding the terminal
+   * compatibility issue where DEC and SCO save share a slot.
    */
   private writeToScroll(data: string | Buffer): void {
     if (this._promptActive) {
-      process.stdout.write(cursorSave);        // save readline cursor (DEC)
-      process.stdout.write(cursorRestoreSCO);   // restore scroll cursor (SCO)
+      process.stdout.write(cursorSave);
+      process.stdout.write(cursorTo(this.scrollBottom, this.scrollCol));
       process.stdout.write(data.toString());
-      process.stdout.write(cursorSaveSCO);      // save scroll cursor (SCO)
-      process.stdout.write(cursorRestore);       // restore readline cursor (DEC)
+      this.scrollCol = this.advanceCol(data.toString(), this.scrollCol);
+      process.stdout.write(cursorRestore);
     } else {
       process.stdout.write(data);
     }
+  }
+
+  /**
+   * Compute the new scroll column after writing text.
+   * Accounts for newlines (\n), carriage returns (\r), and line wrapping.
+   * ANSI escape codes are stripped so they don't affect column counting.
+   */
+  private advanceCol(text: string, startCol: number): number {
+    const plain = stripAnsi(text);
+    let col = startCol;
+    for (let i = 0; i < plain.length; i++) {
+      const ch = plain[i];
+      if (ch === "\n" || ch === "\r") {
+        col = 1;
+      } else {
+        col++;
+        if (col > this.cols) {
+          col = 1;
+        }
+      }
+    }
+    return col;
   }
 
   /** Render the entire fixed footer: separator + empty prompt + status bar. */
@@ -309,12 +334,9 @@ export class ScreenManager {
       this.renderFooter();
 
       if (this._promptActive) {
-        // Re-save scroll cursor at new scrollBottom, then restore to prompt row
-        process.stdout.write(cursorTo(this.scrollBottom, 1));
-        process.stdout.write(cursorSaveSCO);
+        this.scrollCol = 1;
         process.stdout.write(cursorTo(this.promptRow, 1));
       } else {
-        // Position cursor in scroll region
         process.stdout.write(cursorTo(this.scrollBottom, 1));
       }
     }, 100);
@@ -354,8 +376,18 @@ export class ScreenManager {
       x: number,
       _y?: number,
     ): boolean => {
-      const seq = x === 0 ? "\r" : `\r\x1b[${x}C`;
-      self.writeToScroll(seq);
+      if (self._promptActive) {
+        self.scrollCol = x + 1; // cursorTo is 0-based, scrollCol is 1-based
+        process.stdout.write(cursorSave);
+        process.stdout.write(cursorTo(self.scrollBottom, self.scrollCol));
+        process.stdout.write(cursorRestore);
+      } else {
+        if (x === 0) {
+          process.stdout.write("\r");
+        } else {
+          process.stdout.write(`\r\x1b[${x}C`);
+        }
+      }
       return true;
     };
 

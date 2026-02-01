@@ -195,6 +195,11 @@ async function main(): Promise<void> {
   const session = new Session(write);
   const prompt = new Prompt(screen ?? undefined, palette ?? undefined);
 
+  // Readline is always active (continuous askQuestion loop), so the cursor
+  // is always at the prompt row.  Keep promptActive=true so all output
+  // writes use save/restore + explicit cursorTo positioning.
+  if (screen) screen.setPromptActive(true);
+
   // Wire interrupt handling — Prompt delegates Ctrl+C / Escape here.
   // Session.handleInterrupt() handles both idle (double Ctrl+C exit)
   // and processing (abort agent) states.
@@ -211,7 +216,6 @@ async function main(): Promise<void> {
   while (!session.shouldExit) {
     if (screen) {
       screen.setScreenState("idle");
-      screen.setPromptActive(false);
     }
 
     const input = await prompt.read();
@@ -233,7 +237,6 @@ async function main(): Promise<void> {
 
     if (screen) {
       screen.setScreenState("processing");
-      screen.setPromptActive(true);
     }
 
     const signal = session.startProcessing();
