@@ -1,0 +1,23 @@
+{
+  "name": "@orbit/cli",
+  "version": "1.0.0",
+  "description": "orbit-ai — conversational AI terminal shell for MongoDB Atlas management.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "orbit-ai": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "files": ["dist"],
+  "dependencies": {
+    "@orbit/core": "1.0.0",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "chalk": "^5.4.0",
+    "ora": "^8.2.0",
+    "marked": "^15.0.0",
+    "marked-terminal": "^7.3.0"
+  }
+}

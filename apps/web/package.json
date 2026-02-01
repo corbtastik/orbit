@@ -1,0 +1,13 @@
+{
+  "name": "@orbit/web",
+  "version": "1.0.0",
+  "description": "OrbitAI Web UI — browser-based Atlas management interface.",
+  "type": "module",
+  "scripts": {
+    "build": "echo 'web build placeholder'",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@orbit/api": "1.0.0"
+  }
+}
