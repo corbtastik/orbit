@@ -1,0 +1,16 @@
+{
+  "name": "@orbit/api",
+  "version": "1.0.0",
+  "description": "OrbitAI HTTP API — REST endpoints for the Web UI.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "files": ["dist"],
+  "dependencies": {
+    "@orbit/core": "1.0.0"
+  }
+}

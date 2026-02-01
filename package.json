@@ -1,0 +1,25 @@
+{
+  "name": "orbit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OrbitAI — Your AI-powered MongoDB Atlas mission control.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "parse-openapi": "node scripts/parse-openapi.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "yaml": "^2.8.2"
+  }
+}
