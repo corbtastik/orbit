@@ -58,7 +58,7 @@ function printBlock(lines: string[], width: number, palette: typeof g): void {
 /**
  * Display the orbit-ai startup banner.
  */
-export function printBanner(provider: string, model: string): void {
+export function printBanner(): void {
   const w = process.stdout.columns || 80;
 
   console.log();
@@ -79,11 +79,6 @@ export function printBanner(provider: string, model: string): void {
   console.log(" ".repeat(tagPad) + colors.dim(tagline));
 
   console.log();
-
-  // Info line
-  const info = `${provider}/${model}`;
-  const infoPad = Math.max(0, Math.floor((w - info.length) / 2));
-  console.log(" ".repeat(infoPad) + colors.dim(info));
 
   // Hint
   const hint = "Type natural language to manage Atlas. Ctrl+C to exit.";
