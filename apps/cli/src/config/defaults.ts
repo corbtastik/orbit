@@ -37,6 +37,14 @@ export const LLM_DEFAULTS = {
   temperature: 0,
 };
 
+/** Default model per provider (used when user doesn't specify --model). */
+export const PROVIDER_MODEL_DEFAULTS: Record<string, string> = {
+  anthropic: "claude-sonnet-4-20250514",
+  openai: "gpt-4o",
+  google: "gemini-2.0-flash",
+  ollama: "llama3.1",
+};
+
 /** Default CLI behavior. */
 export const CLI_DEFAULTS = {
   outputFormat: "markdown" as const,
