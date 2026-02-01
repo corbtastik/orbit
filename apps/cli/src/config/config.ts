@@ -3,6 +3,7 @@ import {
   CONFIG_FILE,
   ENV,
   LLM_DEFAULTS,
+  PROVIDER_MODEL_DEFAULTS,
   CLI_DEFAULTS,
   ATLAS_BASE_URL,
 } from "./defaults.js";
@@ -115,6 +116,7 @@ export function resolveCliConfig(flags: CliFlags = {}): CliConfig {
         flags.model ??
         process.env[ENV.LLM_MODEL] ??
         file.llm?.model ??
+        PROVIDER_MODEL_DEFAULTS[provider] ??
         LLM_DEFAULTS.model,
       baseUrl:
         process.env[ENV.LLM_BASE_URL] ?? file.llm?.baseUrl,
