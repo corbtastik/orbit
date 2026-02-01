@@ -2,7 +2,7 @@
 
 import { parseArgs } from "node:util";
 import { AtlasClient, resolveConfig } from "@orbit/core";
-import { resolveCliConfig } from "./config/index.js";
+import { resolveCliConfig, type CliConfig } from "./config/index.js";
 import { createProvider } from "./providers/index.js";
 import { runAgentTurn, createConversation } from "./agent/index.js";
 import {
@@ -155,17 +155,16 @@ async function main(): Promise<void> {
   }
 
   // Interactive REPL mode
-  printBanner(config.llm.provider, config.llm.model ?? "default");
+  printBanner();
 
   // Set up screen layout (3-zone TUI) if running in a terminal
   const isTTY = process.stdout.isTTY ?? false;
   const screen = isTTY ? new ScreenManager() : null;
-  const modelLabel = config.llm.model ?? "default";
 
   if (screen) {
     screen.setup({
-      left: "  /help \u00B7 /clear \u00B7 /quit",
-      right: `${config.llm.provider} \u00B7 ${modelLabel}  `,
+      left: "  /help \u00B7 /config \u00B7 /clear \u00B7 /quit",
+      right: "  orbit-ai  ",
     });
   }
 
@@ -182,6 +181,7 @@ async function main(): Promise<void> {
     ? new CommandPalette(
         [
           { name: "/help", description: "Show available commands" },
+          { name: "/config", description: "Show current configuration" },
           { name: "/clear", description: "Clear conversation history" },
           { name: "/quit", description: "Exit orbit-ai" },
           { name: "/exit", description: "Exit orbit-ai" },
@@ -227,7 +227,7 @@ async function main(): Promise<void> {
 
     // Handle built-in commands
     if (input.startsWith("/")) {
-      const result = handleCommand(input, conversation, writeLine);
+      const result = handleCommand(input, config, conversation, writeLine);
       if (result === "quit") break;
       if (result) continue;
     }
@@ -273,6 +273,7 @@ async function main(): Promise<void> {
 /** Handle slash commands. Returns true if handled, "quit" to exit, false if unknown. */
 function handleCommand(
   input: string,
+  config: CliConfig,
   conversation: ReturnType<typeof createConversation>,
   writeLine: (text: string) => void,
 ): boolean | "quit" {
@@ -283,9 +284,14 @@ function handleCommand(
       writeLine("");
       writeLine(colors.bold("Commands"));
       writeLine("  /help     Show this help");
+      writeLine("  /config   Show current configuration");
       writeLine("  /clear    Clear conversation history");
       writeLine("  /quit     Exit orbit-ai");
       writeLine("");
+      return true;
+
+    case "/config":
+      printConfig(config, writeLine);
       return true;
 
     case "/clear":
@@ -301,6 +307,47 @@ function handleCommand(
     default:
       return false; // not a known command, pass to LLM
   }
+}
+
+/** Mask a secret value: show **** if set, — if unset. */
+function mask(value: string | undefined): string {
+  return value ? "****" : "\u2014";
+}
+
+/** Display a config value: show the value if set, — if unset. */
+function val(value: string | number | boolean | undefined): string {
+  if (value === undefined || value === null) return "\u2014";
+  return String(value);
+}
+
+/** Print current configuration with secrets masked. */
+function printConfig(config: CliConfig, writeLine: (text: string) => void): void {
+  const label = (name: string, value: string) =>
+    `    ${colors.dim(name.padEnd(16))}${colors.text(value)}`;
+
+  writeLine("");
+  writeLine(colors.bold("  Configuration"));
+  writeLine("");
+  writeLine(colors.bold("  LLM"));
+  writeLine(label("Provider", val(config.llm.provider)));
+  writeLine(label("Model", val(config.llm.model)));
+  writeLine(label("API Key", mask(config.llm.apiKey)));
+  writeLine(label("Base URL", val(config.llm.baseUrl)));
+  writeLine(label("Max Tokens", val(config.llm.maxTokens)));
+  writeLine(label("Temperature", val(config.llm.temperature)));
+  writeLine("");
+  writeLine(colors.bold("  Atlas"));
+  writeLine(label("Public Key", mask(config.atlas.publicKey)));
+  writeLine(label("Private Key", mask(config.atlas.privateKey)));
+  writeLine(label("Org ID", val(config.atlas.orgId)));
+  writeLine(label("Group ID", val(config.atlas.groupId)));
+  writeLine(label("Base URL", val(config.atlas.baseUrl)));
+  writeLine("");
+  writeLine(colors.bold("  Defaults"));
+  writeLine(label("Output Format", val(config.defaults.outputFormat)));
+  writeLine(label("Max Tool Turns", val(config.defaults.maxToolTurns)));
+  writeLine(label("Verbose", val(config.defaults.verbose)));
+  writeLine("");
 }
 
 main().catch((err) => {
