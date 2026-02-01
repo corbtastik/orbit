@@ -5,7 +5,16 @@ import { AtlasClient, resolveConfig } from "@orbit/core";
 import { resolveCliConfig } from "./config/index.js";
 import { createProvider } from "./providers/index.js";
 import { runAgentTurn, createConversation } from "./agent/index.js";
-import { printBanner, Prompt, InputBuffer, Session, formatError, colors } from "./ui/index.js";
+import {
+  printBanner,
+  Prompt,
+  Session,
+  ScreenManager,
+  CommandPalette,
+  formatError,
+  colors,
+  icons,
+} from "./ui/index.js";
 
 /** Parse CLI arguments. */
 function parseCliArgs() {
@@ -148,91 +157,143 @@ async function main(): Promise<void> {
   // Interactive REPL mode
   printBanner(config.llm.provider, config.llm.model ?? "default");
 
-  const conversation = createConversation();
-  const prompt = new Prompt();
-  const inputBuffer = new InputBuffer();
-  const session = new Session(inputBuffer);
+  // Set up screen layout (3-zone TUI) if running in a terminal
+  const isTTY = process.stdout.isTTY ?? false;
+  const screen = isTTY ? new ScreenManager() : null;
+  const modelLabel = config.llm.model ?? "default";
 
-  // SIGINT handler — delegates to session state machine
-  process.on("SIGINT", () => {
-    if (session.state === "idle") {
-      session.handleInterrupt();
-      if (session.shouldExit) {
-        console.log(colors.dim("\n\nGoodbye."));
-        prompt.close();
-        process.exit(0);
-      }
+  if (screen) {
+    screen.setup({
+      left: "  /help \u00B7 /clear \u00B7 /quit",
+      right: `${config.llm.provider} \u00B7 ${modelLabel}  `,
+    });
+  }
+
+  // Output routing — through ScreenManager when active, direct otherwise
+  const write = screen
+    ? (t: string) => screen.writeToScrollRegion(t)
+    : (t: string) => { process.stdout.write(t); };
+  const writeLine = screen
+    ? (t: string) => screen.writeLine(t)
+    : (t: string) => { console.log(t); };
+
+  // Command palette for slash command typeahead
+  const palette = screen
+    ? new CommandPalette(
+        [
+          { name: "/help", description: "Show available commands" },
+          { name: "/clear", description: "Clear conversation history" },
+          { name: "/quit", description: "Exit orbit-ai" },
+          { name: "/exit", description: "Exit orbit-ai" },
+        ],
+        () => screen.separatorRow,
+        () => screen.termCols,
+      )
+    : null;
+
+  const conversation = createConversation();
+  const session = new Session(write);
+  const prompt = new Prompt(screen ?? undefined, palette ?? undefined);
+
+  // Wire interrupt handling — Prompt delegates Ctrl+C / Escape here.
+  // Session.handleInterrupt() handles both idle (double Ctrl+C exit)
+  // and processing (abort agent) states.
+  prompt.onInterrupt(() => {
+    session.handleInterrupt();
+    if (session.shouldExit) {
+      if (screen) screen.teardown();
+      prompt.close();
+      console.log(colors.dim("\n\nGoodbye."));
+      process.exit(0);
     }
-    // During processing, the InputBuffer handles Ctrl+C via raw mode
   });
 
-  let prefill: string | undefined;
-
   while (!session.shouldExit) {
-    const input = await prompt.read(prefill);
-    prefill = undefined;
+    if (screen) {
+      screen.setScreenState("idle");
+      screen.setPromptActive(false);
+    }
+
+    const input = await prompt.read();
 
     if (input === null) {
       // Ctrl+D or closed
-      console.log(colors.dim("\nGoodbye."));
       break;
     }
 
     // Handle built-in commands
     if (input.startsWith("/")) {
-      if (handleCommand(input, conversation)) continue;
+      const result = handleCommand(input, conversation, writeLine);
+      if (result === "quit") break;
+      if (result) continue;
+    }
+
+    // Echo user input to the scroll region (like Claude Code)
+    writeLine(`${colors.primary(icons.prompt)} ${colors.text(input)}`);
+
+    if (screen) {
+      screen.setScreenState("processing");
+      screen.setPromptActive(true);
     }
 
     const signal = session.startProcessing();
-    prompt.pause();
 
     try {
-      await runAgentTurn(input, conversation, { ...agentOptions, signal });
+      await runAgentTurn(input, conversation, {
+        ...agentOptions,
+        signal,
+        write,
+        writeLine,
+        outputStream: screen?.outputStream,
+      });
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") {
         // Already handled by session
       } else {
-        console.error(formatError(err instanceof Error ? err.message : String(err)));
+        writeLine(formatError(err instanceof Error ? err.message : String(err)));
       }
     }
 
-    console.log(); // blank line between turns
-    prefill = session.endProcessing() || undefined;
-    prompt.resume();
+    writeLine(""); // blank line between turns
+    session.endProcessing();
 
     if (session.shouldExit) {
-      console.log(colors.dim("Goodbye."));
       break;
     }
   }
 
   prompt.close();
+  if (screen) screen.teardown();
+  console.log(colors.dim("Goodbye."));
 }
 
-/** Handle slash commands. Returns true if the command was handled. */
-function handleCommand(input: string, conversation: ReturnType<typeof createConversation>): boolean {
+/** Handle slash commands. Returns true if handled, "quit" to exit, false if unknown. */
+function handleCommand(
+  input: string,
+  conversation: ReturnType<typeof createConversation>,
+  writeLine: (text: string) => void,
+): boolean | "quit" {
   const cmd = input.toLowerCase().trim();
 
   switch (cmd) {
     case "/help":
-      console.log(`
-${colors.bold("Commands")}
-  /help     Show this help
-  /clear    Clear conversation history
-  /quit     Exit orbit-ai
-`);
+      writeLine("");
+      writeLine(colors.bold("Commands"));
+      writeLine("  /help     Show this help");
+      writeLine("  /clear    Clear conversation history");
+      writeLine("  /quit     Exit orbit-ai");
+      writeLine("");
       return true;
 
     case "/clear":
       conversation.clear();
-      console.log(colors.muted("  Conversation cleared.\n"));
+      writeLine(colors.muted("  Conversation cleared."));
       return true;
 
     case "/quit":
     case "/exit":
     case "/q":
-      console.log(colors.dim("\nGoodbye."));
-      process.exit(0);
+      return "quit";
 
     default:
       return false; // not a known command, pass to LLM

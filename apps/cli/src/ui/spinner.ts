@@ -1,4 +1,5 @@
 import ora, { type Ora } from "ora";
+import type { Writable } from "node:stream";
 import { colors, icons } from "./theme.js";
 
 /**
@@ -7,11 +8,12 @@ import { colors, icons } from "./theme.js";
 export class SpinnerManager {
   private spinner: Ora;
 
-  constructor() {
+  constructor(stream?: Writable) {
     this.spinner = ora({
       color: "yellow",
       spinner: "dots",
       discardStdin: false,
+      ...(stream ? { stream } : {}),
     });
   }
 
