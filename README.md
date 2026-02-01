@@ -252,6 +252,70 @@ orbit/
 └── scripts/            OpenAPI parser utilities
 ```
 
+## Prompt Testing
+
+Sample natural language prompts for testing orbit-ai across all major capability areas.
+
+### Cluster & Deployment Management
+
+1. `List all my projects and show which ones have clusters running`
+2. `Create a new M10 cluster called analytics-dev in my staging project on AWS us-east-1 with backup enabled`
+3. `Scale the prod-primary cluster up to M50 and enable disk auto-scaling`
+4. `Pause all clusters in the dev project to save costs over the weekend`
+5. `What MongoDB version is each of my clusters running? Flag any that are more than one major version behind`
+
+### Security & Access Control
+
+6. `Add a read-only database user called reporting_svc with access only to the sales database`
+7. `Whitelist the CIDR block 10.0.0.0/16 in my production project and remove any entries that expired before January 1st`
+8. `Show me all database users in the production project and their assigned roles`
+9. `Set up a private endpoint for my prod-main cluster on AWS in us-east-1`
+10. `Enable encryption at rest with AWS KMS for all clusters in the production project`
+
+### Monitoring & Alerts
+
+11. `What alerts are currently firing across all my projects?`
+12. `Show me the Performance Advisor recommendations for my prod-primary cluster`
+13. `Create an alert that notifies me when any cluster's CPU exceeds 80% for more than 5 minutes`
+14. `Show me the slow query log for the orders database on cluster east-primary over the last 24 hours`
+15. `What are the current connection counts and opcounter rates for my production clusters?`
+
+### Backup & Disaster Recovery
+
+16. `Take an on-demand snapshot of cluster east-primary, then show me the backup schedule and retention policy`
+17. `List all available snapshots for my prod-main cluster from the last 7 days`
+18. `Update the backup compliance policy to retain daily snapshots for 30 days and weekly for 1 year`
+19. `Restore cluster prod-analytics to the most recent snapshot before yesterday at 3pm UTC`
+20. `Export the latest snapshot of prod-main to my S3 bucket in us-east-1`
+
+### Billing & Cost Management
+
+21. `How much did my organization spend last month? Break it down by project.`
+22. `Show me the invoice line items for the current billing period sorted by cost`
+23. `Compare spending between my production and staging projects for the last 3 months`
+
+### Atlas Services
+
+24. `Create an Atlas Search index on the products collection with mappings for name, description, and the embedding field as a vector with 1536 dimensions`
+25. `Set up a Data Federation endpoint that queries across my prod-main cluster and my S3 data lake`
+26. `Create a Stream Processing pipeline that reads from the orders topic and writes to the analytics collection`
+
+### Organization & Project Admin
+
+27. `Set up a maintenance window for Sundays at 3am UTC and enable auto-defer for my production project`
+28. `Create a new project called mobile-backend under my organization and add the platform-team to it`
+29. `List all API keys in my organization and show which ones have been used in the last 30 days`
+30. `Invite user jane@example.com to the production project with the readWriteAnyDatabase role`
+
+### Multi-step & Conversational
+
+These test the agent's ability to chain tool calls and maintain context across turns.
+
+31. `Show me my most expensive cluster, then tell me what Performance Advisor recommends for it`
+32. `Find all clusters without backup enabled, then enable cloud backup on each one`
+33. `Which projects have no alert configurations? Set up a default CPU and disk alert for each one.`
+34. `List my clusters, pick the one with the most connections, and show me its slow queries`
+
 ## License
 
 TBD
