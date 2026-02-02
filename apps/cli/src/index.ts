@@ -2,7 +2,7 @@
 
 import { parseArgs } from "node:util";
 import { AtlasClient, resolveConfig } from "@orbit/core";
-import { resolveCliConfig, type CliConfig } from "./config/index.js";
+import { resolveCliConfig, VERSION, type CliConfig } from "./config/index.js";
 import { createProvider } from "./providers/index.js";
 import { runAgentTurn, createConversation } from "./agent/index.js";
 import {
@@ -85,7 +85,7 @@ async function main(): Promise<void> {
   }
 
   if (args.version) {
-    console.log("orbit-ai 1.0.0");
+    console.log(`orbit-ai ${VERSION}`);
     process.exit(0);
   }
 
@@ -164,7 +164,7 @@ async function main(): Promise<void> {
   if (screen) {
     screen.setup({
       left: "  /help \u00B7 /config \u00B7 /clear \u00B7 /quit",
-      right: "  orbit-ai  ",
+      right: `  orbit-ai v${VERSION}  `,
     });
   }
 

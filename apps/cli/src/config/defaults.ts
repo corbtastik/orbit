@@ -1,6 +1,9 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+/** Application version (0.x.y = in development, pre-stable). */
+export const VERSION = "0.1.0";
+
 /** Directory for orbit-ai configuration files. */
 export const CONFIG_DIR = join(homedir(), ".orbit-ai");
 

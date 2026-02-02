@@ -1,4 +1,5 @@
 export {
+  VERSION,
   CONFIG_DIR,
   CONFIG_FILE,
   ENV,
