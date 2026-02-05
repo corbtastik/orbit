@@ -3,9 +3,23 @@
  *
  * All update tools have operationType "write" and are blocked when the
  * server is running in read-only mode.
+ *
+ * Multi-connection support: All tools accept an optional `connection`
+ * parameter to specify which named connection to use. If not specified,
+ * uses the default connection.
  */
 
 import type { DatabaseToolDef } from "./types.js";
+
+/** Connection parameter schema shared by all tools. */
+const connectionProperty = {
+  connection: {
+    type: "string",
+    description:
+      "Named connection to use. Use list-connections to see available connections. " +
+      "If not specified, uses the default connection.",
+  },
+};
 
 // ---------------------------------------------------------------------------
 // update-many
@@ -20,6 +34,7 @@ const updateManyTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -48,10 +63,10 @@ const updateManyTool: DatabaseToolDef = {
     required: ["database", "collection", "filter", "update"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
     const filter = args.filter as Record<string, unknown>;
     const update = args.update as Record<string, unknown>;
     const upsert = (args.upsert as boolean) ?? false;
@@ -81,6 +96,7 @@ const renameCollectionTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -102,7 +118,10 @@ const renameCollectionTool: DatabaseToolDef = {
     required: ["database", "collection", "newName"],
   },
   execute: async (conn, args) => {
-    const db = conn.getDb(args.database as string);
+    const connectionName = args._connectionName as string | undefined;
+    const db = connectionName
+      ? conn.getNamedDb(connectionName, args.database as string)
+      : conn.getDb(args.database as string);
     const dropTarget = (args.dropTarget as boolean) ?? false;
 
     await db.renameCollection(

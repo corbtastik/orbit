@@ -41,6 +41,10 @@ export interface ServerOptions {
  * The ConnectionManager is optional. If omitted (or no connection is active),
  * database tools return a clear "not connected" error. Connection tools are
  * always available so the LLM can establish a connection at runtime.
+ *
+ * Multi-connection support: Tools can specify a `connection` parameter to
+ * target a specific named connection. If not specified, uses the default
+ * connection for backward compatibility.
  */
 export function createServer(
   client: AtlasClient,
@@ -61,6 +65,8 @@ export function createServer(
         "Use Atlas tools (manage_*) for infrastructure: clusters, security, backups, monitoring. " +
         "Use database tools (find, aggregate, insert-many, etc.) for querying and managing data. " +
         "Use the connect tool to establish a MongoDB connection before running database operations. " +
+        "Use list-connections to see available connections. " +
+        "Specify a connection parameter on database tools to target a specific named connection. " +
         "Use resources for quick read-only snapshots. Use prompts for guided multi-step workflows.",
     },
   );
@@ -189,6 +195,10 @@ function registerTools(
 
 /**
  * Handle a database tool call with connection and access checks.
+ *
+ * Supports multi-connection by checking for a `connection` parameter:
+ * - If specified, validates it exists and auto-connects if registered
+ * - If not specified, uses backward-compat default connection behavior
  */
 async function handleDatabaseTool(
   tool: DatabaseToolDef,
@@ -203,13 +213,6 @@ async function handleDatabaseTool(
     );
   }
 
-  // Non-connection tools require an active connection
-  if (tool.operationType !== "connection" && !conn?.isConnected()) {
-    return errorResult(
-      "Not connected to MongoDB. Use the connect tool first.",
-    );
-  }
-
   // ConnectionManager must exist (even for connection tools)
   if (!conn) {
     return errorResult(
@@ -217,8 +220,44 @@ async function handleDatabaseTool(
     );
   }
 
+  // Extract connection name from args (used by multi-connection support)
+  const connectionName = args.connection as string | undefined;
+
+  // Non-connection tools require an active connection
+  if (tool.operationType !== "connection") {
+    if (connectionName) {
+      // Named connection requested — validate it exists
+      if (!conn.hasConnection(connectionName)) {
+        return errorResult(
+          `Connection "${connectionName}" not found. Use list-connections to see available connections.`,
+        );
+      }
+      // Auto-connect on first use if registered but not connected
+      if (!conn.isConnectedNamed(connectionName)) {
+        try {
+          await conn.connectNamed(connectionName);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return errorResult(`Failed to connect "${connectionName}": ${message}`);
+        }
+      }
+    } else {
+      // No connection specified — require default connection (backward compat)
+      if (!conn.isConnected()) {
+        return errorResult(
+          "Not connected to MongoDB. Use the connect tool first, or specify a connection parameter.",
+        );
+      }
+    }
+  }
+
   try {
-    const result = await tool.execute(conn, args);
+    // Pass connection name through to tool via _connectionName
+    const toolArgs = connectionName
+      ? { ...args, _connectionName: connectionName }
+      : args;
+
+    const result = await tool.execute(conn, toolArgs);
     return {
       content: [
         {

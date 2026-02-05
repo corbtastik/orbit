@@ -107,43 +107,128 @@ node apps/cli/dist/index.js "list all my projects"
 
 ### Configuration
 
-Configuration is resolved in order: CLI flags > environment variables > config file > defaults.
+Configuration is resolved in order: **CLI flags > environment variables > config file > defaults**.
 
-**Environment variables:**
+#### Environment Variables
+
+**Atlas API Credentials**
 
 | Variable | Description |
 |----------|-------------|
-| `ATLAS_PUBLIC_KEY` | Atlas API public key |
-| `ATLAS_PRIVATE_KEY` | Atlas API private key |
-| `ATLAS_ORG_ID` | Default organization ID |
-| `ATLAS_GROUP_ID` | Default project (group) ID |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `GOOGLE_API_KEY` | Google AI API key |
-| `ORBIT_LLM_PROVIDER` | LLM provider name |
-| `ORBIT_LLM_MODEL` | Model override |
+| `ATLAS_PUBLIC_KEY` | Public key for MongoDB Atlas API authentication. Required for all Atlas operations. Generate at [Atlas API Keys](https://www.mongodb.com/docs/atlas/configure-api-access/). |
+| `ATLAS_PRIVATE_KEY` | Private key paired with the public key. Keep this secret. Required for all Atlas operations. |
+| `ATLAS_ORG_ID` | Default organization ID. When set, commands that require an org ID will use this value unless overridden. |
+| `ATLAS_GROUP_ID` | Default project (group) ID. When set, commands that require a project ID will use this value unless overridden. |
+| `ATLAS_BASE_URL` | Atlas API base URL. Defaults to `https://cloud.mongodb.com`. Override for Atlas for Government or private deployments. |
 
-**Config file:** `~/.orbit-ai/config.json`
+**LLM Provider**
+
+| Variable | Description |
+|----------|-------------|
+| `ORBIT_LLM_PROVIDER` | LLM provider to use: `anthropic`, `openai`, `google`, or `ollama`. Defaults to `anthropic`. |
+| `ORBIT_LLM_MODEL` | Model name override. Defaults vary by provider: `claude-sonnet-4-20250514` (Anthropic), `gpt-4o` (OpenAI), `gemini-2.5-flash` (Google), `llama3.1` (Ollama). |
+| `ORBIT_LLM_API_KEY` | Generic API key for the selected provider. Checked first before provider-specific keys. |
+| `ORBIT_LLM_BASE_URL` | Custom API base URL. Required for Ollama (e.g., `http://localhost:11434/v1`). Also useful for OpenAI-compatible APIs like LM Studio. |
+| `ORBIT_LLM_MAX_TOKENS` | Maximum tokens for LLM responses. Defaults to `4096`. |
+
+**Provider-Specific API Keys**
+
+These are checked when `ORBIT_LLM_API_KEY` is not set:
+
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | API key for Anthropic (Claude models). Get one at [console.anthropic.com](https://console.anthropic.com/). |
+| `OPENAI_API_KEY` | API key for OpenAI (GPT models). Get one at [platform.openai.com](https://platform.openai.com/). |
+| `GOOGLE_API_KEY` | API key for Google AI (Gemini models). Get one at [aistudio.google.com](https://aistudio.google.com/). |
+
+#### Config File
+
+**Location:** `~/.orbit-ai/config.json`
+
+The config file provides an alternative to environment variables. Values in the config file are overridden by environment variables, which are overridden by CLI flags.
 
 ```json
 {
   "atlas": {
-    "publicKey": "...",
-    "privateKey": "...",
-    "orgId": "...",
-    "groupId": "..."
+    "publicKey": "your-public-key",
+    "privateKey": "your-private-key",
+    "orgId": "your-default-org-id",
+    "groupId": "your-default-project-id",
+    "baseUrl": "https://cloud.mongodb.com"
   },
   "llm": {
     "provider": "anthropic",
     "model": "claude-sonnet-4-20250514",
-    "maxTokens": 4096
+    "apiKey": "your-api-key",
+    "baseUrl": null,
+    "maxTokens": 4096,
+    "temperature": 0
   },
   "defaults": {
+    "outputFormat": "markdown",
     "maxToolTurns": 10,
     "verbose": false
   }
 }
 ```
+
+#### Example: Local LLM with LM Studio
+
+To use a local model via LM Studio (OpenAI-compatible API):
+
+```bash
+export ORBIT_LLM_PROVIDER="openai"
+export ORBIT_LLM_MODEL="qwen2.5-coder-14b-instruct-mlx"
+export ORBIT_LLM_BASE_URL="http://localhost:1234/v1"
+export ORBIT_LLM_API_KEY="lm-studio"  # any non-empty value works
+```
+
+#### MongoDB Connections (MCP Server)
+
+The MCP server supports connecting to multiple MongoDB databases simultaneously using named connections. This enables cross-database workflows like copying data between instances, comparing schemas, or aggregating queries across databases.
+
+**Named Connections**
+
+Define connections using the `MONGODB_CONN_<NAME>` pattern:
+
+| Variable | Description |
+|----------|-------------|
+| `MONGODB_CONN_<NAME>` | Connection string for a named MongoDB connection. `<NAME>` becomes the identifier used in tool calls (e.g., `local`, `atlas`, `staging`, `prod`). Supports any valid MongoDB connection string — Atlas clusters, localhost, or remote hosts. |
+
+**Examples:**
+
+```bash
+# Local MongoDB instance
+export MONGODB_CONN_LOCAL="mongodb://localhost:27017"
+
+# Atlas cluster
+export MONGODB_CONN_ATLAS="mongodb+srv://user:pass@cluster0.mongodb.net"
+
+# Staging environment
+export MONGODB_CONN_STAGING="mongodb+srv://user:pass@staging.mongodb.net"
+
+# Production with replica set
+export MONGODB_CONN_PROD="mongodb+srv://user:pass@prod.mongodb.net/?retryWrites=true&w=majority"
+
+# Remote host with auth
+export MONGODB_CONN_ANALYTICS="mongodb://analyst:pass@10.0.1.50:27017/analytics?authSource=admin"
+```
+
+**How it works:**
+
+1. At startup, the MCP server discovers all `MONGODB_CONN_*` env vars
+2. Connections are established on-demand when first used
+3. Each database tool accepts an optional `connection` parameter to specify which named connection to use
+4. Use `list-connections` to see available connections and their status
+
+**Example prompts:**
+
+- "connect to my local and atlas databases"
+- "read the users collection from local and write it to atlas database myapp"
+- "summarize all databases across all my connections"
+- "compare the schema of orders collection between staging and prod"
+- "find all documents with status 'pending' across all my databases"
+- "which of my mongodb instances has the most collections?"
 
 ### Example Session
 

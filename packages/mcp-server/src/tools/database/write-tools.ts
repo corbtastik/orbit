@@ -3,6 +3,10 @@
  *
  * All write tools have operationType "write" and are blocked when the
  * server is running in read-only mode (ORBIT_READ_ONLY=true).
+ *
+ * Multi-connection support: All tools accept an optional `connection`
+ * parameter to specify which named connection to use. If not specified,
+ * uses the default connection.
  */
 
 import type { IndexSpecification, CreateIndexesOptions } from "mongodb";
@@ -10,6 +14,16 @@ import type { DatabaseToolDef } from "./types.js";
 
 /** Maximum number of documents that can be inserted in a single call. */
 const MAX_INSERT_BATCH = 1000;
+
+/** Connection parameter schema shared by all tools. */
+const connectionProperty = {
+  connection: {
+    type: "string",
+    description:
+      "Named connection to use. Use list-connections to see available connections. " +
+      "If not specified, uses the default connection.",
+  },
+};
 
 // ---------------------------------------------------------------------------
 // insert-many
@@ -25,6 +39,7 @@ const insertManyTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -44,10 +59,10 @@ const insertManyTool: DatabaseToolDef = {
     required: ["database", "collection", "documents"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
     const documents = args.documents as Record<string, unknown>[];
 
     if (documents.length > MAX_INSERT_BATCH) {
@@ -79,6 +94,7 @@ const createIndexTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -104,10 +120,10 @@ const createIndexTool: DatabaseToolDef = {
     required: ["database", "collection", "keys"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
     const keys = args.keys as IndexSpecification;
     const options = (args.options as CreateIndexesOptions) ?? {};
 
@@ -137,6 +153,7 @@ const createCollectionTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -149,7 +166,10 @@ const createCollectionTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const db = conn.getDb(args.database as string);
+    const connectionName = args._connectionName as string | undefined;
+    const db = connectionName
+      ? conn.getNamedDb(connectionName, args.database as string)
+      : conn.getDb(args.database as string);
     await db.createCollection(args.collection as string);
 
     return {

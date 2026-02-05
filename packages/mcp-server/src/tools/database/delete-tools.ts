@@ -4,9 +4,23 @@
  * All delete tools have operationType "write" and are blocked when the
  * server is running in read-only mode. These are destructive operations
  * — the LLM should confirm intent before calling drop-* tools.
+ *
+ * Multi-connection support: All tools accept an optional `connection`
+ * parameter to specify which named connection to use. If not specified,
+ * uses the default connection.
  */
 
 import type { DatabaseToolDef } from "./types.js";
+
+/** Connection parameter schema shared by all tools. */
+const connectionProperty = {
+  connection: {
+    type: "string",
+    description:
+      "Named connection to use. Use list-connections to see available connections. " +
+      "If not specified, uses the default connection.",
+  },
+};
 
 // ---------------------------------------------------------------------------
 // delete-many
@@ -21,6 +35,7 @@ const deleteManyTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -40,10 +55,10 @@ const deleteManyTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
     const filter = (args.filter as Record<string, unknown>) ?? {};
 
     const result = await coll.deleteMany(filter);
@@ -68,6 +83,7 @@ const dropCollectionTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -80,7 +96,10 @@ const dropCollectionTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const db = conn.getDb(args.database as string);
+    const connectionName = args._connectionName as string | undefined;
+    const db = connectionName
+      ? conn.getNamedDb(connectionName, args.database as string)
+      : conn.getDb(args.database as string);
     const dropped = await db.dropCollection(args.collection as string);
 
     return {
@@ -107,6 +126,7 @@ const dropDatabaseTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name to drop.",
@@ -115,7 +135,10 @@ const dropDatabaseTool: DatabaseToolDef = {
     required: ["database"],
   },
   execute: async (conn, args) => {
-    const db = conn.getDb(args.database as string);
+    const connectionName = args._connectionName as string | undefined;
+    const db = connectionName
+      ? conn.getNamedDb(connectionName, args.database as string)
+      : conn.getDb(args.database as string);
     const result = await db.dropDatabase();
 
     return {
@@ -140,6 +163,7 @@ const dropIndexTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -158,10 +182,10 @@ const dropIndexTool: DatabaseToolDef = {
     required: ["database", "collection", "indexName"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
 
     await coll.dropIndex(args.indexName as string);
 
