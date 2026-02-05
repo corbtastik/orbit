@@ -33,7 +33,8 @@ export function buildToolSchema(actions: ActionMap) {
         additionalProperties: true,
       },
       body: {
-        description: "Request body for create/update operations (POST, PUT, PATCH).",
+        type: "object" as const,
+        description: "Request body for create/update operations (POST, PUT, PATCH). Must be a JSON object, not a string.",
       },
     },
     required: ["action"] as string[],

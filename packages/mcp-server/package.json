@@ -1,6 +1,6 @@
 {
   "name": "@orbit/mcp-server",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "OrbitAI MCP server — exposes Atlas operations as MCP tools, resources, and prompts.",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,9 +20,12 @@
     "test": "vitest run",
     "start": "node dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@orbit/core": "1.0.0",
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "mongodb": "^7.1.0"
   }
 }

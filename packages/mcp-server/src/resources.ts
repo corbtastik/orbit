@@ -1,7 +1,8 @@
 import type { AtlasClient } from "@orbit/core";
+import type { ConnectionManager } from "./tools/index.js";
 
 /**
- * Defines an MCP resource backed by an Atlas API call.
+ * Defines an MCP resource backed by an Atlas API call or MongoDB connection.
  */
 export interface ResourceDef {
   uri: string;
@@ -13,6 +14,7 @@ export interface ResourceDef {
   /** Fetch the resource data. Variables are extracted from the URI. */
   read: (
     client: AtlasClient,
+    conn: ConnectionManager | undefined,
     vars: Record<string, string>,
   ) => Promise<unknown>;
 }
@@ -20,9 +22,16 @@ export interface ResourceDef {
 const P = "/api/atlas/v2";
 
 /**
- * All 15 MCP resources from the architecture design.
+ * All MCP resources — Atlas API resources and MongoDB database resources.
+ *
+ * Atlas resources (atlas://) use the AtlasClient for HTTP calls.
+ * MongoDB resources (mongodb://) use the ConnectionManager for driver calls.
  */
 export const RESOURCE_REGISTRY: ResourceDef[] = [
+  // =========================================================================
+  // Atlas API Resources (15)
+  // =========================================================================
+
   // Organizations
   {
     uri: "atlas://orgs",
@@ -38,7 +47,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Organization details",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) => c.get(`${P}/orgs/${enc(v.orgId)}`),
+    read: (c, _conn, v) => c.get(`${P}/orgs/${enc(v.orgId)}`),
   },
   {
     uri: "atlas://orgs/{orgId}/projects",
@@ -46,7 +55,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Projects in one organization",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) => c.get(`${P}/orgs/${enc(v.orgId)}/groups`),
+    read: (c, _conn, v) => c.get(`${P}/orgs/${enc(v.orgId)}/groups`),
   },
 
   // Projects
@@ -64,7 +73,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Project details",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) => c.get(`${P}/groups/${enc(v.groupId)}`),
+    read: (c, _conn, v) => c.get(`${P}/groups/${enc(v.groupId)}`),
   },
   {
     uri: "atlas://projects/{groupId}/clusters",
@@ -72,7 +81,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Clusters in one project",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) => c.get(`${P}/groups/${enc(v.groupId)}/clusters`),
+    read: (c, _conn, v) => c.get(`${P}/groups/${enc(v.groupId)}/clusters`),
   },
   {
     uri: "atlas://projects/{groupId}/clusters/{clusterName}",
@@ -80,7 +89,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Cluster details",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) =>
+    read: (c, _conn, v) =>
       c.get(
         `${P}/groups/${enc(v.groupId)}/clusters/${enc(v.clusterName)}`,
       ),
@@ -91,7 +100,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Database users in one project",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) =>
+    read: (c, _conn, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/databaseUsers`),
   },
   {
@@ -100,7 +109,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "IP access list entries",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) =>
+    read: (c, _conn, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/accessList`),
   },
   {
@@ -109,7 +118,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Active alerts in one project",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) =>
+    read: (c, _conn, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/alerts`),
   },
   {
@@ -118,7 +127,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Alert configurations",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) =>
+    read: (c, _conn, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/alertConfigs`),
   },
   {
@@ -127,7 +136,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Backup snapshots for one cluster",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) =>
+    read: (c, _conn, v) =>
       c.get(
         `${P}/groups/${enc(v.groupId)}/clusters/${enc(v.clusterName)}/backup/snapshots`,
       ),
@@ -138,7 +147,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Recent project events",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) =>
+    read: (c, _conn, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/events`),
   },
   {
@@ -147,7 +156,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "MongoDB processes in one project",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) =>
+    read: (c, _conn, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/processes`),
   },
   {
@@ -156,13 +165,89 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Third-party integrations",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, v) =>
+    read: (c, _conn, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/integrations`),
+  },
+
+  // =========================================================================
+  // MongoDB Database Resources (5)
+  // =========================================================================
+
+  {
+    uri: "mongodb://databases",
+    name: "mongodb_databases",
+    description: "List all databases on the connected MongoDB instance",
+    mimeType: "application/json",
+    isTemplate: false,
+    read: (_c, conn) => {
+      requireConnection(conn);
+      return conn!.getClient().db().admin().listDatabases();
+    },
+  },
+  {
+    uri: "mongodb://databases/{database}/collections",
+    name: "mongodb_collections",
+    description: "List all collections in a MongoDB database",
+    mimeType: "application/json",
+    isTemplate: true,
+    read: (_c, conn, v) => {
+      requireConnection(conn);
+      return conn!.getDb(v.database).listCollections().toArray();
+    },
+  },
+  {
+    uri: "mongodb://databases/{database}/collections/{collection}/schema",
+    name: "mongodb_collection_schema",
+    description: "Sample documents from a collection to infer schema",
+    mimeType: "application/json",
+    isTemplate: true,
+    read: async (_c, conn, v) => {
+      requireConnection(conn);
+      const coll = conn!.getCollection(v.database, v.collection);
+      return coll.aggregate([{ $sample: { size: 5 } }]).toArray();
+    },
+  },
+  {
+    uri: "mongodb://databases/{database}/collections/{collection}/indexes",
+    name: "mongodb_collection_indexes",
+    description: "List indexes on a MongoDB collection",
+    mimeType: "application/json",
+    isTemplate: true,
+    read: (_c, conn, v) => {
+      requireConnection(conn);
+      return conn!.getCollection(v.database, v.collection).indexes();
+    },
+  },
+  {
+    uri: "mongodb://databases/{database}/stats",
+    name: "mongodb_db_stats",
+    description: "Database-level statistics (document count, storage size, etc.)",
+    mimeType: "application/json",
+    isTemplate: true,
+    read: (_c, conn, v) => {
+      requireConnection(conn);
+      return conn!.getDb(v.database).command({ dbStats: 1 });
+    },
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function enc(value: string): string {
   return encodeURIComponent(value);
+}
+
+/**
+ * Throw a clear error if no MongoDB connection is active.
+ */
+function requireConnection(conn: ConnectionManager | undefined): void {
+  if (!conn?.isConnected()) {
+    throw new Error(
+      "Not connected to MongoDB. Use the connect tool first.",
+    );
+  }
 }
 
 /**
