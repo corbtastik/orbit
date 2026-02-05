@@ -1,11 +1,12 @@
 /**
- * Tests for all 23 database tool definitions and their execute functions.
+ * Tests for all 24 database tool definitions and their execute functions.
  *
  * Verifies:
  *  - Tool count and naming conventions
  *  - operationType classification (read/write/connection)
  *  - inputSchema structure
  *  - Execute functions call the correct MongoDB driver methods
+ *  - Multi-connection support via connection parameter
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -79,7 +80,7 @@ function mockDb(collInstance?: ReturnType<typeof mockCollection>) {
   };
 }
 
-/** Create a mock ConnectionManager. */
+/** Create a mock ConnectionManager with multi-connection support. */
 function createMockConn(
   connected = true,
 ): ConnectionManager & {
@@ -90,6 +91,7 @@ function createMockConn(
   const db = mockDb(coll);
 
   const conn = {
+    // Backward compat single-connection API
     isConnected: vi.fn().mockReturnValue(connected),
     connect: vi.fn().mockResolvedValue(undefined),
     disconnect: vi.fn().mockResolvedValue(undefined),
@@ -113,6 +115,26 @@ function createMockConn(
     getDb: vi.fn().mockReturnValue(db),
     getCollection: vi.fn().mockReturnValue(coll),
     getConnectionInfo: vi.fn().mockReturnValue("mongodb://localhost:27017"),
+    // Multi-connection API
+    hasConnection: vi.fn().mockReturnValue(true),
+    isConnectedNamed: vi.fn().mockReturnValue(connected),
+    connectNamed: vi.fn().mockResolvedValue(undefined),
+    disconnectNamed: vi.fn().mockResolvedValue(undefined),
+    disconnectAll: vi.fn().mockResolvedValue(undefined),
+    getNamedClient: vi.fn().mockReturnValue({
+      db: vi.fn().mockReturnValue({
+        admin: vi.fn().mockReturnValue({
+          listDatabases: vi.fn().mockResolvedValue({
+            databases: [{ name: "admin" }, { name: "test" }],
+          }),
+        }),
+      }),
+    }),
+    getNamedDb: vi.fn().mockReturnValue(db),
+    getNamedCollection: vi.fn().mockReturnValue(coll),
+    listConnections: vi.fn().mockReturnValue([
+      { name: "default", status: "connected", uri: "mongodb://localhost:27017" },
+    ]),
     _db: db,
     _coll: coll,
   } as unknown as ConnectionManager & {
@@ -128,8 +150,8 @@ function createMockConn(
 // ---------------------------------------------------------------------------
 
 describe("DATABASE_TOOLS registry", () => {
-  it("has exactly 23 tools", () => {
-    expect(DATABASE_TOOLS).toHaveLength(23);
+  it("has exactly 24 tools", () => {
+    expect(DATABASE_TOOLS).toHaveLength(24);
   });
 
   it("all names are unique", () => {
@@ -175,12 +197,12 @@ describe("DATABASE_TOOLS registry", () => {
 // ---------------------------------------------------------------------------
 
 describe("operationType classification", () => {
-  it("connection tools: connect, switch-connection", () => {
+  it("connection tools: connect, disconnect, list-connections", () => {
     const connTools = DATABASE_TOOLS.filter(
       (t) => t.operationType === "connection",
     );
     const names = connTools.map((t) => t.name).sort();
-    expect(names).toEqual(["connect", "switch-connection"]);
+    expect(names).toEqual(["connect", "disconnect", "list-connections"]);
   });
 
   it("read tools: 12 total (5 read + 7 metadata)", () => {
@@ -209,22 +231,49 @@ describe("connection tool execution", () => {
     conn = createMockConn();
   });
 
-  it("connect calls conn.connect()", async () => {
+  it("connect calls conn.connectNamed()", async () => {
+    const tool = DATABASE_TOOLS.find((t) => t.name === "connect")!;
+    const result = await tool.execute(conn, {
+      name: "local",
+      connectionString: "mongodb://localhost:27017",
+    });
+    expect(conn.connectNamed).toHaveBeenCalledWith("local", "mongodb://localhost:27017");
+    expect(result).toHaveProperty("ok", true);
+  });
+
+  it("connect defaults to 'default' name when not specified", async () => {
     const tool = DATABASE_TOOLS.find((t) => t.name === "connect")!;
     const result = await tool.execute(conn, {
       connectionString: "mongodb://localhost:27017",
     });
-    expect(conn.connect).toHaveBeenCalledWith("mongodb://localhost:27017");
+    expect(conn.connectNamed).toHaveBeenCalledWith("default", "mongodb://localhost:27017");
     expect(result).toHaveProperty("ok", true);
   });
 
-  it("switch-connection calls conn.connect()", async () => {
-    const tool = DATABASE_TOOLS.find((t) => t.name === "switch-connection")!;
+  it("disconnect calls conn.disconnectNamed()", async () => {
+    const tool = DATABASE_TOOLS.find((t) => t.name === "disconnect")!;
     const result = await tool.execute(conn, {
-      connectionString: "mongodb://other:27017",
+      name: "local",
     });
-    expect(conn.connect).toHaveBeenCalledWith("mongodb://other:27017");
+    expect(conn.disconnectNamed).toHaveBeenCalledWith("local");
     expect(result).toHaveProperty("ok", true);
+  });
+
+  it("disconnect with all=true calls conn.disconnectAll()", async () => {
+    const tool = DATABASE_TOOLS.find((t) => t.name === "disconnect")!;
+    const result = await tool.execute(conn, {
+      all: true,
+    });
+    expect(conn.disconnectAll).toHaveBeenCalled();
+    expect(result).toHaveProperty("ok", true);
+  });
+
+  it("list-connections returns connection list", async () => {
+    const tool = DATABASE_TOOLS.find((t) => t.name === "list-connections")!;
+    const result = (await tool.execute(conn, {})) as Record<string, unknown>;
+    expect(conn.listConnections).toHaveBeenCalled();
+    expect(result).toHaveProperty("connections");
+    expect(result).toHaveProperty("count");
   });
 });
 

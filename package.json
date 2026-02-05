@@ -13,7 +13,11 @@
     "clean": "npm run clean --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
-    "parse-openapi": "node scripts/parse-openapi.js"
+    "parse-openapi": "node scripts/parse-openapi.js",
+    "mcp": "node --env-file=.env packages/mcp-server/dist/index.js",
+    "cli": "node --env-file=.env apps/cli/dist/index.js",
+    "dev:mcp": "npm run build --workspace=packages/mcp-server && npm run mcp",
+    "dev:cli": "npm run build --workspace=apps/cli && npm run cli"
   },
   "devDependencies": {
     "typescript": "^5.7.0",

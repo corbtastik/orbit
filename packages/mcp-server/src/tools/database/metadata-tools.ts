@@ -4,9 +4,23 @@
  * These are all read-only introspection operations. They help the LLM
  * understand the shape of a database before running queries or suggesting
  * optimizations.
+ *
+ * Multi-connection support: All tools accept an optional `connection`
+ * parameter to specify which named connection to use. If not specified,
+ * uses the default connection.
  */
 
 import type { DatabaseToolDef } from "./types.js";
+
+/** Connection parameter schema shared by all tools. */
+const connectionProperty = {
+  connection: {
+    type: "string",
+    description:
+      "Named connection to use. Use list-connections to see available connections. " +
+      "If not specified, uses the default connection.",
+  },
+};
 
 // ---------------------------------------------------------------------------
 // list-databases
@@ -19,10 +33,16 @@ const listDatabasesTool: DatabaseToolDef = {
   operationType: "read",
   inputSchema: {
     type: "object",
-    properties: {},
+    properties: {
+      ...connectionProperty,
+    },
   },
-  execute: async (conn) => {
-    const admin = conn.getClient().db().admin();
+  execute: async (conn, args) => {
+    const connectionName = args._connectionName as string | undefined;
+    const client = connectionName
+      ? conn.getNamedClient(connectionName)
+      : conn.getClient();
+    const admin = client.db().admin();
     return admin.listDatabases();
   },
 };
@@ -39,6 +59,7 @@ const listCollectionsTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -47,7 +68,10 @@ const listCollectionsTool: DatabaseToolDef = {
     required: ["database"],
   },
   execute: async (conn, args) => {
-    const db = conn.getDb(args.database as string);
+    const connectionName = args._connectionName as string | undefined;
+    const db = connectionName
+      ? conn.getNamedDb(connectionName, args.database as string)
+      : conn.getDb(args.database as string);
     return db.listCollections().toArray();
   },
 };
@@ -64,6 +88,7 @@ const collectionIndexesTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -76,10 +101,10 @@ const collectionIndexesTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
     return coll.indexes();
   },
 };
@@ -98,6 +123,7 @@ const collectionSchemaTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -114,10 +140,10 @@ const collectionSchemaTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
     const sampleSize = Math.min(
       Math.max((args.sampleSize as number) || 5, 1),
       20,
@@ -150,6 +176,7 @@ const collectionStorageSizeTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -162,10 +189,10 @@ const collectionStorageSizeTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
 
     // Use $collStats to get storage info
     const stats = await coll
@@ -191,6 +218,7 @@ const dbStatsTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -199,7 +227,10 @@ const dbStatsTool: DatabaseToolDef = {
     required: ["database"],
   },
   execute: async (conn, args) => {
-    const db = conn.getDb(args.database as string);
+    const connectionName = args._connectionName as string | undefined;
+    const db = connectionName
+      ? conn.getNamedDb(connectionName, args.database as string)
+      : conn.getDb(args.database as string);
     return db.command({ dbStats: 1 });
   },
 };
@@ -217,6 +248,7 @@ const mongodbLogsTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       type: {
         type: "string",
         description:
@@ -231,10 +263,14 @@ const mongodbLogsTool: DatabaseToolDef = {
     },
   },
   execute: async (conn, args) => {
+    const connectionName = args._connectionName as string | undefined;
+    const client = connectionName
+      ? conn.getNamedClient(connectionName)
+      : conn.getClient();
     const logType = (args.type as string) || "global";
     const limit = Math.min(Math.max((args.limit as number) || 50, 1), 500);
 
-    const admin = conn.getClient().db("admin");
+    const admin = client.db("admin");
     const result = await admin.command({ getLog: logType });
 
     // Trim to requested limit (getLog returns all available lines)

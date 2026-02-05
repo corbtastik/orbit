@@ -4,6 +4,10 @@
  * All read tools have operationType "read" and are never blocked by
  * read-only mode. They cover the core query operations: find, aggregate,
  * count, explain, and export.
+ *
+ * Multi-connection support: All tools accept an optional `connection`
+ * parameter to specify which named connection to use. If not specified,
+ * uses the default connection.
  */
 
 import type { DatabaseToolDef } from "./types.js";
@@ -13,6 +17,16 @@ const MAX_FIND_LIMIT = 100;
 
 /** Maximum number of documents returned by aggregate to prevent unbounded results. */
 const MAX_AGGREGATE_LIMIT = 1000;
+
+/** Connection parameter schema shared by all tools. */
+const connectionProperty = {
+  connection: {
+    type: "string",
+    description:
+      "Named connection to use. Use list-connections to see available connections. " +
+      "If not specified, uses the default connection.",
+  },
+};
 
 // ---------------------------------------------------------------------------
 // find
@@ -27,6 +41,7 @@ const findTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -62,10 +77,10 @@ const findTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
 
     const filter = (args.filter as Record<string, unknown>) ?? {};
     const projection = args.projection as Record<string, unknown> | undefined;
@@ -106,6 +121,7 @@ const aggregateTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -125,10 +141,10 @@ const aggregateTool: DatabaseToolDef = {
     required: ["database", "collection", "pipeline"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
     const pipeline = args.pipeline as Record<string, unknown>[];
 
     // Safety limit: append $limit if the pipeline doesn't already end with one
@@ -162,6 +178,7 @@ const countTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -179,10 +196,10 @@ const countTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
     const query = (args.query as Record<string, unknown>) ?? {};
 
     const count = await coll.countDocuments(query);
@@ -208,6 +225,7 @@ const explainTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -240,10 +258,10 @@ const explainTool: DatabaseToolDef = {
     required: ["database", "collection", "method"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
     const method = args.method as string;
     const verbosity = (args.verbosity as string) || "queryPlanner";
 
@@ -288,6 +306,7 @@ const exportTool: DatabaseToolDef = {
   inputSchema: {
     type: "object",
     properties: {
+      ...connectionProperty,
       database: {
         type: "string",
         description: "Database name.",
@@ -325,10 +344,10 @@ const exportTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const coll = conn.getCollection(
-      args.database as string,
-      args.collection as string,
-    );
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
     const limit = Math.min(
       Math.max((args.limit as number) || 100, 1),
       10000,
