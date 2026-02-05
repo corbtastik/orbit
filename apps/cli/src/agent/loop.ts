@@ -32,6 +32,8 @@ export interface AgentLoopOptions {
   writeLine?: (text: string) => void;
   /** Stream for ora spinner (ScreenManager proxy or default). */
   outputStream?: Writable;
+  /** If true, output raw markdown without rendering. Default: false. */
+  rawOutput?: boolean;
 }
 
 /** Pre-build tool definitions once for all requests. */
@@ -66,6 +68,7 @@ export async function runAgentTurn(
     verbose,
     signal,
     outputStream,
+    rawOutput = false,
   } = options;
 
   const write = options.write ?? ((t: string) => { process.stdout.write(t); });
@@ -114,6 +117,7 @@ export async function runAgentTurn(
         toolCalls,
         isFirstText,
         verbose,
+        rawOutput,
         onUsage: (u) => { usage = u; },
         onFirstText: () => { isFirstText = false; },
       });
@@ -196,8 +200,13 @@ export async function runAgentTurn(
 
     // No tool calls — this is the final text response
     if (fullText) {
-      // Newline after streamed text
-      write("\n");
+      if (rawOutput) {
+        // Raw mode: just add newline after streamed text
+        write("\n");
+      } else {
+        // Pretty mode: render markdown and output the complete response
+        write("\n" + renderMarkdown(fullText) + "\n");
+      }
       conversation.addAssistantText(fullText);
     }
 
@@ -225,6 +234,7 @@ function handleStreamEvent(
     toolCalls: { id: string; name: string; args: Record<string, unknown>; thoughtSignature?: string }[];
     isFirstText: boolean;
     verbose?: boolean;
+    rawOutput?: boolean;
     onUsage: (u: { inputTokens: number; outputTokens: number }) => void;
     onFirstText: () => void;
   },
@@ -233,10 +243,16 @@ function handleStreamEvent(
     case "text_delta":
       if (ctx.isFirstText) {
         ctx.spinner.stop();
-        ctx.write("\n"); // blank line before response
         ctx.onFirstText();
       }
-      ctx.write(event.text);
+      // In raw mode, stream text as it arrives
+      // In pretty mode, just collect it (rendered at the end)
+      if (ctx.rawOutput) {
+        if (ctx.textChunks.length === 0) {
+          ctx.write("\n"); // blank line before response
+        }
+        ctx.write(event.text);
+      }
       ctx.textChunks.push(event.text);
       break;
     case "tool_call":

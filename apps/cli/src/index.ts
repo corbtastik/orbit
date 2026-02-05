@@ -26,6 +26,7 @@ function parseCliArgs() {
       "api-key": { type: "string" },
       verbose: { type: "boolean", short: "v", default: false },
       "max-tokens": { type: "string" },
+      raw: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
       version: { type: "boolean", default: false },
     },
@@ -37,6 +38,7 @@ function parseCliArgs() {
     apiKey: values["api-key"],
     verbose: values.verbose ?? false,
     maxTokens: values["max-tokens"] ? parseInt(values["max-tokens"], 10) : undefined,
+    raw: values.raw ?? false,
     help: values.help ?? false,
     version: values.version ?? false,
     query: positionals.join(" ").trim() || undefined,
@@ -58,6 +60,7 @@ ${colors.bold("OPTIONS")}
       --api-key <key>     API key for the LLM provider
   -v, --verbose           Show tool details and token usage
       --max-tokens <n>    Max response tokens (default: 4096)
+      --raw               Output raw markdown (disable pretty rendering)
   -h, --help              Show this help message
       --version           Show version
 
@@ -140,6 +143,7 @@ async function main(): Promise<void> {
     orgId: config.atlas.orgId,
     groupId: config.atlas.groupId,
     verbose: config.defaults.verbose,
+    rawOutput: args.raw,
   };
 
   // One-shot mode: run a single query and exit
