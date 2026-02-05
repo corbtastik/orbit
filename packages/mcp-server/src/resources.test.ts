@@ -2,18 +2,28 @@ import { describe, it, expect } from "vitest";
 import { RESOURCE_REGISTRY, extractVariables } from "./resources.js";
 
 describe("RESOURCE_REGISTRY", () => {
-  it("has 15 entries", () => {
-    expect(RESOURCE_REGISTRY).toHaveLength(15);
+  it("has 20 entries (15 Atlas + 5 MongoDB)", () => {
+    expect(RESOURCE_REGISTRY).toHaveLength(20);
   });
 
-  it("has exactly 2 static resources", () => {
+  it("has exactly 3 static resources (2 Atlas + 1 MongoDB)", () => {
     const statics = RESOURCE_REGISTRY.filter((r) => !r.isTemplate);
-    expect(statics).toHaveLength(2);
+    expect(statics).toHaveLength(3);
   });
 
-  it("has exactly 13 template resources", () => {
+  it("has exactly 17 template resources (13 Atlas + 4 MongoDB)", () => {
     const templates = RESOURCE_REGISTRY.filter((r) => r.isTemplate);
-    expect(templates).toHaveLength(13);
+    expect(templates).toHaveLength(17);
+  });
+
+  it("Atlas resources use atlas:// URI scheme", () => {
+    const atlas = RESOURCE_REGISTRY.filter((r) => r.uri.startsWith("atlas://"));
+    expect(atlas).toHaveLength(15);
+  });
+
+  it("MongoDB resources use mongodb:// URI scheme", () => {
+    const mongo = RESOURCE_REGISTRY.filter((r) => r.uri.startsWith("mongodb://"));
+    expect(mongo).toHaveLength(5);
   });
 });
 

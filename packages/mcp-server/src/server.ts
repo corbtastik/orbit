@@ -10,7 +10,13 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { AtlasClient, dispatch } from "@orbit/core";
 import type { ActionMap } from "@orbit/core";
-import { TOOL_REGISTRY, buildToolSchema } from "./tools/index.js";
+import {
+  TOOL_REGISTRY,
+  buildToolSchema,
+  DATABASE_TOOLS,
+} from "./tools/index.js";
+import type { DatabaseToolDef } from "./tools/index.js";
+import type { ConnectionManager } from "./tools/index.js";
 import {
   RESOURCE_REGISTRY,
   extractVariables,
@@ -18,14 +24,31 @@ import {
 import { PROMPT_REGISTRY } from "./prompts.js";
 
 /**
+ * Options for configuring server behavior.
+ */
+export interface ServerOptions {
+  /** Block database write tools when true. Atlas tools are unaffected. */
+  readOnly?: boolean;
+}
+
+/**
  * Create and configure the OrbitAI MCP server.
  *
- * Uses the low-level Server class so we can register tools with
- * dynamically-generated JSON Schema (no Zod dependency required).
+ * Supports two tool systems:
+ *   1. Atlas Admin API tools — routed through dispatch() and ActionMaps
+ *   2. Database tools — routed through the MongoDB driver via ConnectionManager
+ *
+ * The ConnectionManager is optional. If omitted (or no connection is active),
+ * database tools return a clear "not connected" error. Connection tools are
+ * always available so the LLM can establish a connection at runtime.
  */
-export function createServer(client: AtlasClient): Server {
+export function createServer(
+  client: AtlasClient,
+  conn?: ConnectionManager,
+  options: ServerOptions = {},
+): Server {
   const server = new Server(
-    { name: "orbit-mcp-server", version: "1.0.0" },
+    { name: "orbit-mcp-server", version: "1.1.0" },
     {
       capabilities: {
         tools: {},
@@ -33,14 +56,19 @@ export function createServer(client: AtlasClient): Server {
         prompts: {},
       },
       instructions:
-        "OrbitAI MCP Server — provides 100% coverage of the MongoDB Atlas Admin API v2. " +
-        "Use tools to manage clusters, projects, security, backups, monitoring, and more. " +
+        "OrbitAI MCP Server — provides 100% coverage of the MongoDB Atlas Admin API v2 " +
+        "and direct MongoDB database operations. " +
+        "Use Atlas tools (manage_*) for infrastructure: clusters, security, backups, monitoring. " +
+        "Use database tools (find, aggregate, insert-many, etc.) for querying and managing data. " +
+        "Use the connect tool to establish a MongoDB connection before running database operations. " +
         "Use resources for quick read-only snapshots. Use prompts for guided multi-step workflows.",
     },
   );
 
-  registerTools(server, client);
-  registerResources(server, client);
+  const readOnly = options.readOnly ?? false;
+
+  registerTools(server, client, conn, readOnly);
+  registerResources(server, client, conn);
   registerPrompts(server);
 
   return server;
@@ -50,8 +78,13 @@ export function createServer(client: AtlasClient): Server {
 // Tools
 // ---------------------------------------------------------------------------
 
-function registerTools(server: Server, client: AtlasClient): void {
-  // Pre-build schemas and index by name for fast lookup
+function registerTools(
+  server: Server,
+  client: AtlasClient,
+  conn: ConnectionManager | undefined,
+  readOnly: boolean,
+): void {
+  // --- Atlas Admin API tool index ---
   const toolIndex = new Map<
     string,
     { description: string; actions: ActionMap; inputSchema: ReturnType<typeof buildToolSchema> }
@@ -65,23 +98,46 @@ function registerTools(server: Server, client: AtlasClient): void {
     });
   }
 
-  // tools/list — return all 41 tools with their JSON Schema
+  // --- Database tool index ---
+  const dbToolIndex = new Map<string, DatabaseToolDef>();
+
+  for (const def of DATABASE_TOOLS) {
+    dbToolIndex.set(def.name, def);
+  }
+
+  // tools/list — return Atlas tools + database tools in a single list
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOL_REGISTRY.map((def) => {
-      const entry = toolIndex.get(def.name)!;
-      return {
+    tools: [
+      // Atlas Admin API tools
+      ...TOOL_REGISTRY.map((def) => {
+        const entry = toolIndex.get(def.name)!;
+        return {
+          name: def.name,
+          description: def.description,
+          inputSchema: entry.inputSchema,
+        };
+      }),
+      // Database tools
+      ...DATABASE_TOOLS.map((def) => ({
         name: def.name,
         description: def.description,
-        inputSchema: entry.inputSchema,
-      };
-    }),
+        inputSchema: def.inputSchema,
+      })),
+    ],
   }));
 
-  // tools/call — dispatch the requested action through @orbit/core
+  // tools/call — route to database tools or Atlas tools
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name } = request.params;
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
 
+    // --- Check database tools first ---
+    const dbTool = dbToolIndex.get(name);
+    if (dbTool) {
+      return handleDatabaseTool(dbTool, conn, args, readOnly);
+    }
+
+    // --- Fall through to Atlas Admin API tools ---
     const entry = toolIndex.get(name);
     if (!entry) {
       return errorResult(`Unknown tool: ${name}`);
@@ -94,12 +150,25 @@ function registerTools(server: Server, client: AtlasClient): void {
       );
     }
 
+    // Guard against the LLM sending body as a pre-stringified JSON string.
+    // If that happens, parse it back to an object to avoid double-encoding.
+    let body = args.body;
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        return errorResult(
+          "body must be a JSON object, not a string.",
+        );
+      }
+    }
+
     try {
       const result = await dispatch(client, entry.actions, {
         action,
         pathParams: (args.params as Record<string, string>) ?? {},
         query: (args.query as Record<string, string>) ?? {},
-        body: args.body,
+        body,
       });
 
       return {
@@ -118,6 +187,52 @@ function registerTools(server: Server, client: AtlasClient): void {
   });
 }
 
+/**
+ * Handle a database tool call with connection and access checks.
+ */
+async function handleDatabaseTool(
+  tool: DatabaseToolDef,
+  conn: ConnectionManager | undefined,
+  args: Record<string, unknown>,
+  readOnly: boolean,
+) {
+  // Write operations are blocked in read-only mode
+  if (tool.operationType === "write" && readOnly) {
+    return errorResult(
+      "Write operations are disabled in read-only mode.",
+    );
+  }
+
+  // Non-connection tools require an active connection
+  if (tool.operationType !== "connection" && !conn?.isConnected()) {
+    return errorResult(
+      "Not connected to MongoDB. Use the connect tool first.",
+    );
+  }
+
+  // ConnectionManager must exist (even for connection tools)
+  if (!conn) {
+    return errorResult(
+      "MongoDB support is not configured. ConnectionManager is not available.",
+    );
+  }
+
+  try {
+    const result = await tool.execute(conn, args);
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return errorResult(message);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Resources
 // ---------------------------------------------------------------------------
@@ -125,6 +240,7 @@ function registerTools(server: Server, client: AtlasClient): void {
 function registerResources(
   server: Server,
   client: AtlasClient,
+  conn: ConnectionManager | undefined,
 ): void {
   const staticResources = RESOURCE_REGISTRY.filter((r) => !r.isTemplate);
   const templateResources = RESOURCE_REGISTRY.filter((r) => r.isTemplate);
@@ -164,7 +280,7 @@ function registerResources(
       // Try static match first
       for (const res of staticResources) {
         if (res.uri === uri) {
-          const data = await res.read(client, {});
+          const data = await res.read(client, conn, {});
           return {
             contents: [
               {
@@ -181,7 +297,7 @@ function registerResources(
       for (const res of templateResources) {
         const vars = extractVariables(res.uri, uri);
         if (vars) {
-          const data = await res.read(client, vars);
+          const data = await res.read(client, conn, vars);
           return {
             contents: [
               {

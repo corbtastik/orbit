@@ -304,6 +304,128 @@ Steps:
 };
 
 // ---------------------------------------------------------------------------
+// Prompt 6: data_explorer
+// ---------------------------------------------------------------------------
+const dataExplorer: PromptDef = {
+  name: "data_explorer",
+  description:
+    "Guided workflow for exploring an unfamiliar MongoDB database. " +
+    "Walks through connecting, listing databases and collections, " +
+    "inspecting schemas, and sampling data.",
+  arguments: [
+    {
+      name: "connectionString",
+      description:
+        "MongoDB connection string. If omitted, assumes already connected.",
+      required: false,
+    },
+    {
+      name: "database",
+      description:
+        "Specific database to explore. If omitted, lists all databases first.",
+      required: false,
+    },
+    {
+      name: "sampleSize",
+      description: "Number of documents to sample per collection (default: 5)",
+      required: false,
+    },
+  ],
+  build: (args) => {
+    const sampleSize = args.sampleSize ?? "5";
+    const connectStep = args.connectionString
+      ? `1. Use the **connect** tool with connection string: \`${args.connectionString}\``
+      : "1. Verify you are connected (or use the **connect** tool if needed).";
+    const dbStep = args.database
+      ? `2. Focus on the **${args.database}** database.`
+      : "2. Use **list-databases** to see all available databases and their sizes. Pick the most interesting one.";
+
+    return [
+      userMsg(
+        `Explore this MongoDB instance and help me understand the data:
+
+${connectStep}
+${dbStep}
+3. Use **list-collections** to see all collections in the target database.
+4. For each collection:
+   a. Use **collection-schema** with sampleSize=${sampleSize} to understand the document shape.
+   b. Use **collection-storage-size** to understand how much data it holds.
+   c. Use **collection-indexes** to see what indexes exist.
+5. Use **count** to get the document count for each collection.
+6. Summarize:
+   - Database and collection inventory (name, doc count, storage size)
+   - Data model overview (key fields, relationships between collections)
+   - Index coverage assessment (are common query patterns covered?)
+   - Any notable observations (empty collections, missing indexes, large documents)`,
+      ),
+    ];
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Prompt 7: query_optimizer
+// ---------------------------------------------------------------------------
+const queryOptimizer: PromptDef = {
+  name: "query_optimizer",
+  description:
+    "Analyze a slow query and suggest index optimizations. " +
+    "Uses explain plans and existing indexes to recommend improvements.",
+  arguments: [
+    {
+      name: "database",
+      description: "Database name where the slow query runs.",
+      required: true,
+    },
+    {
+      name: "collection",
+      description: "Collection name the query targets.",
+      required: true,
+    },
+    {
+      name: "query",
+      description:
+        'The slow query filter as JSON. Example: { "status": "active", "region": "us-east" }',
+      required: true,
+    },
+    {
+      name: "sort",
+      description:
+        'Sort specification if applicable. Example: { "createdAt": -1 }',
+      required: false,
+    },
+  ],
+  build: (args) => {
+    const sortStep = args.sort
+      ? `\n- Sort: \`${args.sort}\``
+      : "";
+
+    return [
+      userMsg(
+        `Analyze and optimize this query on **${args.database}.${args.collection}**:
+
+- Filter: \`${args.query}\`${sortStep}
+
+Steps:
+1. Use **explain** with method "find", the filter above, and verbosity "executionStats" to get the current query plan.
+2. Use **collection-indexes** to list existing indexes on the collection.
+3. Analyze the explain output:
+   - Is it doing a COLLSCAN (full collection scan)?
+   - How many documents were examined vs. returned?
+   - What is the execution time?
+4. If the query is suboptimal, recommend a new index:
+   - Specify the exact index keys and order (ESR rule: Equality, Sort, Range).
+   - Use **create-index** to create it.
+5. Re-run **explain** after creating the index to confirm the improvement.
+6. Report:
+   - Before: scan type, docs examined, execution time
+   - After: scan type, docs examined, execution time
+   - Index created: key specification`,
+      ),
+    ];
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -313,4 +435,6 @@ export const PROMPT_REGISTRY: PromptDef[] = [
   securityReviewer,
   performanceOptimizer,
   disasterRecoveryPlanner,
+  dataExplorer,
+  queryOptimizer,
 ];
