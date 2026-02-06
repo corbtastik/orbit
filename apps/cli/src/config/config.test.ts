@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { resolveCliConfig, loadConfigFile } from "./config.js";
+import { loadConfigFile } from "@orbit/core";
+import { resolveCliConfig } from "./config.js";
 
 // Prevent real ~/.orbit-ai/config.json from leaking into tests
 vi.mock("node:fs", async () => {

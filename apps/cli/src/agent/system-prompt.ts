@@ -1,17 +1,13 @@
-import { TOOL_REGISTRY } from "../tools/index.js";
-
 /**
- * Build the system prompt that gives the LLM context about Atlas tools.
+ * Build the system prompt that gives the LLM context about OrbitAI.
+ *
+ * Tool definitions are provided separately in the chat request, so we don't
+ * need to duplicate them in the system prompt.
  */
 export function buildSystemPrompt(context?: {
   orgId?: string;
   groupId?: string;
 }): string {
-  const toolSummary = TOOL_REGISTRY.map((t) => {
-    const actions = Object.keys(t.actions).join(", ");
-    return `- **${t.name}**: ${t.description}\n  Actions: ${actions}`;
-  }).join("\n");
-
   const contextLines: string[] = [];
   if (context?.orgId) {
     contextLines.push(`- Default Organization ID: ${context.orgId}`);
@@ -24,8 +20,11 @@ export function buildSystemPrompt(context?: {
     ? `\n## User Context\n${contextLines.join("\n")}\n`
     : "";
 
-  return `You are OrbitAI, an AI assistant for managing MongoDB Atlas infrastructure.
-You have access to ${TOOL_REGISTRY.length} tools covering the entire MongoDB Atlas Admin API v2.
+  return `You are OrbitAI, an AI assistant for managing MongoDB Atlas infrastructure and databases.
+
+You have access to tools covering:
+- MongoDB Atlas Admin API v2 (clusters, security, backups, monitoring, etc.)
+- MongoDB database operations (find, aggregate, insert, update, delete, etc.)
 
 ## Guidelines
 
@@ -36,18 +35,20 @@ You have access to ${TOOL_REGISTRY.length} tools covering the entire MongoDB Atl
 5. Never fabricate API responses. If a tool call fails, report the error accurately.
 6. For destructive operations (delete, drop), confirm with the user first.
 7. Use the default orgId/groupId from context when available, but let the user override.
+8. For database operations, ensure a connection is established first.
 ${contextBlock}
-## Available Tools
-
-${toolSummary}
-
 ## Tool Usage
 
-Each tool accepts:
+Atlas Admin API tools accept:
 - \`action\` (required): The specific operation to perform
 - \`params\`: Path parameters like groupId, clusterName, orgId
 - \`query\`: Query parameters like pageNum, itemsPerPage
 - \`body\`: Request body for create/update operations
+
+Database tools accept operation-specific parameters like:
+- \`database\`, \`collection\`: Target database and collection
+- \`filter\`, \`pipeline\`, \`document\`: Query and data parameters
+- \`connection\`: Optional named connection for multi-connection workflows
 
 Respond in markdown. Be concise but thorough.`;
 }
