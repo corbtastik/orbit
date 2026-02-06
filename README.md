@@ -10,10 +10,10 @@ OrbitAI is a TypeScript monorepo providing conversational access to MongoDB Atla
 ┌─────────────────────────────────────────────────────────────────┐
 │                      MCP Server                                 │
 │                                                                 │
-│  ┌─────────────────┐      ┌──────────────────────────────────┐ │
-│  │ StdioTransport  │      │ HTTP Server (:3600)              │ │
-│  │ (Claude Desktop)│      │ StreamableHTTPServerTransport    │ │
-│  └────────┬────────┘      └──────────────┬───────────────────┘ │
+│  ┌─────────────────┐      ┌──────────────────────────────────┐  │
+│  │ StdioTransport  │      │ HTTP Server (:3600)              │  │
+│  │ (Claude Desktop)│      │ StreamableHTTPServerTransport    │  │
+│  └────────┬────────┘      └──────────────┬───────────────────┘  │
 │           │                              │                      │
 │           └──────────────┬───────────────┘                      │
 │                          ▼                                      │
@@ -28,11 +28,11 @@ OrbitAI is a TypeScript monorepo providing conversational access to MongoDB Atla
 ┌─────────────────────────────────────────────────────────────────┐
 │                        orbit-ai CLI                             │
 │                                                                 │
-│  ┌───────────────────────────────────────────────────────────┐ │
-│  │  McpClientWrapper                                          │ │
-│  │  ├─ Primary: HTTP (http://127.0.0.1:3600/mcp)             │ │
-│  │  └─ Fallback: Stdio (spawn orbit-mcp-server)              │ │
-│  └───────────────────────────────────────────────────────────┘ │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  McpClientWrapper                                         │  |
+│  │  ├─ Primary: HTTP (http://127.0.0.1:3600/mcp)             │  │
+│  │  └─ Fallback: Stdio (spawn orbit-mcp-server)              │  │
+│  └───────────────────────────────────────────────────────────┘  │
 │                          │                                      │
 │                          ▼                                      │
 │                 ┌────────────────┐                              │
