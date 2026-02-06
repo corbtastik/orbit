@@ -1,7 +1,6 @@
 import type { Writable } from "node:stream";
-import type { AtlasClient } from "@orbit/core";
 import type { LlmProvider, ContentBlock, ToolDefinition, ChatEvent } from "../providers/index.js";
-import { TOOL_REGISTRY, buildToolSchema, executeTool } from "../tools/index.js";
+import type { McpClientWrapper } from "../mcp/index.js";
 import { ConversationHistory } from "./conversation.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import {
@@ -16,7 +15,7 @@ import {
 
 /** Options for the agent loop. */
 export interface AgentLoopOptions {
-  client: AtlasClient;
+  mcpClient: McpClientWrapper;
   provider: LlmProvider;
   model?: string;
   maxTokens?: number;
@@ -36,15 +35,6 @@ export interface AgentLoopOptions {
   rawOutput?: boolean;
 }
 
-/** Pre-build tool definitions once for all requests. */
-function buildToolDefinitions(): ToolDefinition[] {
-  return TOOL_REGISTRY.map((def) => ({
-    name: def.name,
-    description: def.description,
-    input_schema: buildToolSchema(def.actions),
-  }));
-}
-
 /**
  * Run a single conversation turn: send user input, process LLM response,
  * execute any tool calls, and loop until the LLM produces a final text response.
@@ -57,7 +47,7 @@ export async function runAgentTurn(
   options: AgentLoopOptions,
 ): Promise<string> {
   const {
-    client,
+    mcpClient,
     provider,
     model,
     maxTokens,
@@ -74,7 +64,14 @@ export async function runAgentTurn(
   const write = options.write ?? ((t: string) => { process.stdout.write(t); });
   const writeLine = options.writeLine ?? ((t: string) => { console.log(t); });
 
-  const tools = buildToolDefinitions();
+  // Get tools from MCP server
+  const mcpTools = await mcpClient.listTools();
+  const tools: ToolDefinition[] = mcpTools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: t.input_schema,
+  }));
+
   const systemPrompt = buildSystemPrompt({ orgId, groupId });
   const spinner = new SpinnerManager(outputStream);
 
@@ -154,7 +151,7 @@ export async function runAgentTurn(
       }
       conversation.addAssistantBlocks(assistantBlocks);
 
-      // Execute each tool call
+      // Execute each tool call via MCP
       const resultBlocks: ContentBlock[] = [];
       for (const tc of toolCalls) {
         if (signal?.aborted) {
@@ -171,7 +168,8 @@ export async function runAgentTurn(
         const action = (tc.args.action as string) ?? "unknown";
         spinner.tool(tc.name, action);
 
-        const result = await executeTool(client, tc.name, tc.args);
+        // Execute tool via MCP client
+        const result = await mcpClient.callTool(tc.name, tc.args);
 
         spinner.stop();
         writeLine(formatToolCall(tc.name, action));

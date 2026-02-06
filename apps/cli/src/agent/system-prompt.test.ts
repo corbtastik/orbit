@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { buildSystemPrompt } from "./system-prompt.js";
-import { TOOL_REGISTRY } from "../tools/index.js";
 
 describe("buildSystemPrompt", () => {
   it("mentions OrbitAI identity", () => {
@@ -8,24 +7,21 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("OrbitAI");
   });
 
-  it("includes the correct tool count", () => {
+  it("describes tool coverage areas", () => {
     const prompt = buildSystemPrompt();
-    expect(prompt).toContain(`${TOOL_REGISTRY.length} tools`);
+    // New prompt describes tool coverage instead of listing specific tools
+    expect(prompt).toContain("MongoDB Atlas Admin API");
+    expect(prompt).toContain("MongoDB database operations");
   });
 
-  it("lists all tool names", () => {
+  it("mentions Atlas API tools", () => {
     const prompt = buildSystemPrompt();
-    for (const tool of TOOL_REGISTRY) {
-      expect(prompt).toContain(tool.name);
-    }
+    expect(prompt).toContain("Atlas Admin API");
   });
 
-  it("lists actions for each tool", () => {
+  it("mentions database tools", () => {
     const prompt = buildSystemPrompt();
-    // Spot check a few known tools
-    expect(prompt).toContain("manage_clusters");
-    expect(prompt).toContain("manage_projects");
-    expect(prompt).toContain("manage_billing");
+    expect(prompt).toContain("database operations");
   });
 
   it("includes guidelines section", () => {
@@ -41,6 +37,13 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("params");
     expect(prompt).toContain("query");
     expect(prompt).toContain("body");
+  });
+
+  it("mentions database tool parameters", () => {
+    const prompt = buildSystemPrompt();
+    expect(prompt).toContain("database");
+    expect(prompt).toContain("collection");
+    expect(prompt).toContain("connection");
   });
 
   it("omits context section when no context provided", () => {

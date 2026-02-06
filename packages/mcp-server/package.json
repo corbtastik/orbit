@@ -27,5 +27,8 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@orbit/core": "1.0.0",
     "mongodb": "^7.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0"
   }
 }

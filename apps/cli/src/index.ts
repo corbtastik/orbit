@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import { parseArgs } from "node:util";
-import { AtlasClient, resolveConfig } from "@orbit/core";
-import { resolveCliConfig, VERSION, type CliConfig } from "./config/index.js";
+import { resolveCliConfig, VERSION, CONFIG_FILE, type CliConfig } from "./config/index.js";
 import { createProvider } from "./providers/index.js";
 import { runAgentTurn, createConversation } from "./agent/index.js";
+import { McpClientWrapper } from "./mcp/index.js";
 import {
   printBanner,
   Prompt,
@@ -64,17 +64,19 @@ ${colors.bold("OPTIONS")}
   -h, --help              Show this help message
       --version           Show version
 
-${colors.bold("ENVIRONMENT")}
+${colors.bold("CONFIG FILE")}
+  ${CONFIG_FILE}
+
+  Priority: CLI flags > Environment variables > Config file > Defaults
+
+${colors.bold("ENVIRONMENT")} (overrides config file)
+  ATLAS_PUBLIC_KEY        MongoDB Atlas public API key
+  ATLAS_PRIVATE_KEY       MongoDB Atlas private API key
   ANTHROPIC_API_KEY       Anthropic API key
   OPENAI_API_KEY          OpenAI API key
   GOOGLE_API_KEY          Google AI API key
-  ATLAS_PUBLIC_KEY        MongoDB Atlas public API key
-  ATLAS_PRIVATE_KEY       MongoDB Atlas private API key
-  ATLAS_GROUP_ID          Default project (group) ID
-  ATLAS_ORG_ID            Default organization ID
-
-${colors.bold("CONFIG")}
-  ~/.orbit-ai/config.json
+  ORBIT_MCP_URL           MCP server URL
+  ORBIT_MCP_STDIO         Force stdio transport
 `);
 }
 
@@ -101,24 +103,6 @@ async function main(): Promise<void> {
     maxTokens: args.maxTokens,
   });
 
-  // Validate Atlas credentials
-  if (!config.atlas.publicKey || !config.atlas.privateKey) {
-    console.error(
-      formatError(
-        "Atlas credentials required. Set ATLAS_PUBLIC_KEY and ATLAS_PRIVATE_KEY environment variables.",
-      ),
-    );
-    process.exit(1);
-  }
-
-  // Create Atlas client
-  const atlasConfig = resolveConfig({
-    publicKey: config.atlas.publicKey,
-    privateKey: config.atlas.privateKey,
-    baseUrl: config.atlas.baseUrl,
-  });
-  const client = new AtlasClient(atlasConfig);
-
   // Create LLM provider
   let provider;
   try {
@@ -133,8 +117,30 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Create and connect MCP client
+  const mcpClient = new McpClientWrapper({
+    clientName: "orbit-ai-cli",
+    clientVersion: VERSION,
+    httpUrl: config.mcp.url,
+    httpTimeout: config.mcp.httpTimeout,
+    forceStdio: config.mcp.forceStdio,
+  });
+
+  try {
+    await mcpClient.connect();
+  } catch (err: unknown) {
+    console.error(formatError(`Failed to connect to MCP server: ${err instanceof Error ? err.message : String(err)}`));
+    process.exit(1);
+  }
+
+  // Show connection info in verbose mode
+  if (config.defaults.verbose) {
+    const serverVersion = mcpClient.getServerVersion();
+    console.log(colors.dim(`  Connected via ${mcpClient.transportType}${serverVersion ? ` to ${serverVersion.name} v${serverVersion.version}` : ""}`));
+  }
+
   const agentOptions = {
-    client,
+    mcpClient,
     provider,
     model: config.llm.model,
     maxTokens: config.llm.maxTokens,
@@ -153,8 +159,10 @@ async function main(): Promise<void> {
       await runAgentTurn(args.query, conversation, agentOptions);
     } catch (err: unknown) {
       console.error(formatError(err instanceof Error ? err.message : String(err)));
+      await mcpClient.disconnect();
       process.exit(1);
     }
+    await mcpClient.disconnect();
     process.exit(0);
   }
 
@@ -204,6 +212,11 @@ async function main(): Promise<void> {
   // writes use save/restore + explicit cursorTo positioning.
   if (screen) screen.setPromptActive(true);
 
+  // Cleanup function
+  const cleanup = async () => {
+    await mcpClient.disconnect();
+  };
+
   // Wire interrupt handling — Prompt delegates Ctrl+C / Escape here.
   // Session.handleInterrupt() handles both idle (double Ctrl+C exit)
   // and processing (abort agent) states.
@@ -212,8 +225,10 @@ async function main(): Promise<void> {
     if (session.shouldExit) {
       if (screen) screen.teardown();
       prompt.close();
-      console.log(colors.dim("\n\nGoodbye."));
-      process.exit(0);
+      cleanup().then(() => {
+        console.log(colors.dim("\n\nGoodbye."));
+        process.exit(0);
+      });
     }
   });
 
@@ -231,7 +246,7 @@ async function main(): Promise<void> {
 
     // Handle built-in commands
     if (input.startsWith("/")) {
-      const result = handleCommand(input, config, conversation, writeLine);
+      const result = handleCommand(input, config, mcpClient, conversation, writeLine);
       if (result === "quit") break;
       if (result) continue;
     }
@@ -271,6 +286,7 @@ async function main(): Promise<void> {
 
   prompt.close();
   if (screen) screen.teardown();
+  await cleanup();
   console.log(colors.dim("Goodbye."));
 }
 
@@ -278,6 +294,7 @@ async function main(): Promise<void> {
 function handleCommand(
   input: string,
   config: CliConfig,
+  mcpClient: McpClientWrapper,
   conversation: ReturnType<typeof createConversation>,
   writeLine: (text: string) => void,
 ): boolean | "quit" {
@@ -295,7 +312,7 @@ function handleCommand(
       return true;
 
     case "/config":
-      printConfig(config, writeLine);
+      printConfig(config, mcpClient, writeLine);
       return true;
 
     case "/clear":
@@ -325,7 +342,7 @@ function val(value: string | number | boolean | undefined): string {
 }
 
 /** Print current configuration with secrets masked. */
-function printConfig(config: CliConfig, writeLine: (text: string) => void): void {
+function printConfig(config: CliConfig, mcpClient: McpClientWrapper, writeLine: (text: string) => void): void {
   const label = (name: string, value: string) =>
     `    ${colors.dim(name.padEnd(16))}${colors.text(value)}`;
 
@@ -346,6 +363,16 @@ function printConfig(config: CliConfig, writeLine: (text: string) => void): void
   writeLine(label("Org ID", val(config.atlas.orgId)));
   writeLine(label("Group ID", val(config.atlas.groupId)));
   writeLine(label("Base URL", val(config.atlas.baseUrl)));
+  writeLine("");
+  writeLine(colors.bold("  MCP"));
+  writeLine(label("URL", val(config.mcp.url)));
+  writeLine(label("Force Stdio", val(config.mcp.forceStdio)));
+  writeLine(label("HTTP Timeout", `${config.mcp.httpTimeout}ms`));
+  writeLine(label("Transport", val(mcpClient.transportType ?? undefined)));
+  const serverVersion = mcpClient.getServerVersion();
+  if (serverVersion) {
+    writeLine(label("Server", `${serverVersion.name} v${serverVersion.version}`));
+  }
   writeLine("");
   writeLine(colors.bold("  Defaults"));
   writeLine(label("Output Format", val(config.defaults.outputFormat)));

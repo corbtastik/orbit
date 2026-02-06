@@ -1,17 +1,26 @@
-import { readFileSync, existsSync } from "node:fs";
+/**
+ * CLI configuration wrapper.
+ *
+ * Uses the shared config loader from @orbit/core and applies CLI-specific
+ * overrides from command-line flags.
+ */
+
 import {
-  CONFIG_FILE,
-  ENV,
-  LLM_DEFAULTS,
-  PROVIDER_MODEL_DEFAULTS,
-  CLI_DEFAULTS,
-  ATLAS_BASE_URL,
-} from "./defaults.js";
+  loadConfig,
+  type ResolvedOrbitConfig,
+  type LlmProviderName,
+  type OutputFormat,
+  DEFAULTS,
+} from "@orbit/core";
 
-/** Supported LLM provider identifiers. */
-export type LlmProviderName = "anthropic" | "openai" | "google" | "ollama";
+/** Re-export types from core. */
+export type { LlmProviderName, OutputFormat };
 
-/** Full CLI configuration. */
+/**
+ * CLI configuration structure.
+ *
+ * This is a flattened view of the config for CLI convenience.
+ */
 export interface CliConfig {
   atlas: {
     publicKey?: string;
@@ -28,8 +37,13 @@ export interface CliConfig {
     maxTokens?: number;
     temperature?: number;
   };
+  mcp: {
+    url: string;
+    forceStdio: boolean;
+    httpTimeout: number;
+  };
   defaults: {
-    outputFormat: "markdown" | "json" | "table";
+    outputFormat: OutputFormat;
     maxToolTurns: number;
     verbose: boolean;
   };
@@ -45,102 +59,80 @@ export interface CliFlags {
 }
 
 /**
- * Load configuration from the JSON config file.
- * Returns an empty partial if the file doesn't exist or is invalid.
- */
-export function loadConfigFile(path = CONFIG_FILE): Partial<CliConfig> {
-  if (!existsSync(path)) return {};
-  try {
-    const raw = readFileSync(path, "utf-8");
-    return JSON.parse(raw) as Partial<CliConfig>;
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Resolve the API key for a given provider.
- * Checks ORBIT_LLM_API_KEY first, then provider-specific env vars.
- */
-function resolveApiKey(
-  provider: LlmProviderName,
-  fileKey?: string,
-  flagKey?: string,
-): string | undefined {
-  if (flagKey) return flagKey;
-
-  const generic = process.env[ENV.LLM_API_KEY];
-  if (generic) return generic;
-
-  const providerEnvMap: Record<LlmProviderName, string | undefined> = {
-    anthropic: process.env[ENV.ANTHROPIC_API_KEY],
-    openai: process.env[ENV.OPENAI_API_KEY],
-    google: process.env[ENV.GOOGLE_API_KEY],
-    ollama: undefined, // local, no key needed
-  };
-
-  return providerEnvMap[provider] ?? fileKey;
-}
-
-/**
  * Resolve full CLI configuration.
- * Priority: CLI flags > env vars > config file > defaults.
+ *
+ * Priority: CLI flags > Environment variables > Config file > Defaults
+ *
+ * Uses the shared config loader from @orbit/core, then applies CLI flags.
  */
 export function resolveCliConfig(flags: CliFlags = {}): CliConfig {
-  const file = loadConfigFile();
+  // Load base config (env vars + config file + defaults)
+  const config = loadConfig();
 
-  const provider = (
-    flags.provider ??
-    process.env[ENV.LLM_PROVIDER] ??
-    file.llm?.provider ??
-    LLM_DEFAULTS.provider
-  ) as LlmProviderName;
+  // Apply CLI flag overrides
+  const provider = (flags.provider as LlmProviderName) ?? config.llm.provider;
+  const model = flags.model ?? config.llm.model;
+  const apiKey = flags.apiKey ?? config.llm.apiKey;
+  const verbose = flags.verbose ?? config.defaults.verbose;
+  const maxTokens = flags.maxTokens ?? config.llm.maxTokens;
+
+  // If provider changed via flag, update model to provider default if not specified
+  const finalModel = flags.provider && !flags.model
+    ? DEFAULTS.providerModels[provider] ?? model
+    : model;
+
+  // If provider changed via flag, need to resolve API key for new provider
+  const finalApiKey = flags.provider && !flags.apiKey
+    ? resolveApiKeyForProvider(provider)
+    : apiKey;
 
   return {
     atlas: {
-      publicKey:
-        process.env[ENV.ATLAS_PUBLIC_KEY] ?? file.atlas?.publicKey,
-      privateKey:
-        process.env[ENV.ATLAS_PRIVATE_KEY] ?? file.atlas?.privateKey,
-      orgId:
-        process.env[ENV.ATLAS_ORG_ID] ?? file.atlas?.orgId,
-      groupId:
-        process.env[ENV.ATLAS_GROUP_ID] ?? file.atlas?.groupId,
-      baseUrl:
-        process.env[ENV.ATLAS_BASE_URL] ?? file.atlas?.baseUrl ?? ATLAS_BASE_URL,
+      publicKey: config.atlas.publicKey || undefined,
+      privateKey: config.atlas.privateKey || undefined,
+      orgId: config.atlas.orgId,
+      groupId: config.atlas.groupId,
+      baseUrl: config.atlas.baseUrl,
     },
     llm: {
       provider,
-      apiKey: resolveApiKey(provider, file.llm?.apiKey, flags.apiKey),
-      model:
-        flags.model ??
-        process.env[ENV.LLM_MODEL] ??
-        file.llm?.model ??
-        PROVIDER_MODEL_DEFAULTS[provider] ??
-        LLM_DEFAULTS.model,
-      baseUrl:
-        process.env[ENV.LLM_BASE_URL] ?? file.llm?.baseUrl,
-      maxTokens:
-        flags.maxTokens ??
-        toInt(process.env[ENV.LLM_MAX_TOKENS]) ??
-        file.llm?.maxTokens ??
-        LLM_DEFAULTS.maxTokens,
-      temperature:
-        file.llm?.temperature ?? LLM_DEFAULTS.temperature,
+      apiKey: finalApiKey,
+      model: finalModel,
+      baseUrl: config.llm.baseUrl,
+      maxTokens,
+      temperature: config.llm.temperature,
+    },
+    mcp: {
+      url: config.mcp.url,
+      forceStdio: config.mcp.forceStdio,
+      httpTimeout: config.mcp.httpTimeout,
     },
     defaults: {
-      outputFormat:
-        file.defaults?.outputFormat ?? CLI_DEFAULTS.outputFormat,
-      maxToolTurns:
-        file.defaults?.maxToolTurns ?? CLI_DEFAULTS.maxToolTurns,
-      verbose:
-        flags.verbose ?? file.defaults?.verbose ?? CLI_DEFAULTS.verbose,
+      outputFormat: config.defaults.outputFormat,
+      maxToolTurns: config.defaults.maxToolTurns,
+      verbose,
     },
   };
 }
 
-function toInt(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const n = parseInt(value, 10);
-  return isNaN(n) ? undefined : n;
+/**
+ * Resolve API key for a specific provider from environment.
+ * Used when provider is changed via CLI flag.
+ */
+function resolveApiKeyForProvider(provider: LlmProviderName): string | undefined {
+  const envMap: Record<LlmProviderName, string | undefined> = {
+    anthropic: process.env.ANTHROPIC_API_KEY,
+    openai: process.env.OPENAI_API_KEY,
+    google: process.env.GOOGLE_API_KEY,
+    ollama: undefined,
+  };
+  return process.env.ORBIT_LLM_API_KEY ?? envMap[provider];
+}
+
+/**
+ * Get the raw config from the shared loader.
+ * Useful for tests or advanced use cases.
+ */
+export function getRawConfig(): ResolvedOrbitConfig {
+  return loadConfig();
 }
