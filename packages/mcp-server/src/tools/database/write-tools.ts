@@ -182,6 +182,108 @@ const createCollectionTool: DatabaseToolDef = {
 };
 
 // ---------------------------------------------------------------------------
+// aggregate-out
+// ---------------------------------------------------------------------------
+
+const aggregateOutTool: DatabaseToolDef = {
+  name: "aggregate-out",
+  description:
+    "Run an aggregation pipeline that writes results to a collection using $out or $merge. " +
+    "Use $out to replace a collection entirely, or $merge to upsert into an existing collection. " +
+    "The pipeline MUST end with a $out or $merge stage.",
+  operationType: "write",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ...connectionProperty,
+      database: {
+        type: "string",
+        description: "Source database name.",
+      },
+      collection: {
+        type: "string",
+        description: "Source collection name.",
+      },
+      pipeline: {
+        type: "array",
+        description:
+          "Aggregation pipeline ending with $out or $merge. " +
+          'Example with $out: [{ "$match": { "status": "active" } }, { "$out": "active_users" }]. ' +
+          'Example with $merge: [{ "$group": { "_id": "$category", "count": { "$sum": 1 } } }, ' +
+          '{ "$merge": { "into": "category_counts", "whenMatched": "replace" } }]',
+        items: { type: "object" },
+      },
+    },
+    required: ["database", "collection", "pipeline"],
+  },
+  execute: async (conn, args) => {
+    const connectionName = args._connectionName as string | undefined;
+    const coll = connectionName
+      ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
+      : conn.getCollection(args.database as string, args.collection as string);
+    const pipeline = args.pipeline as Record<string, unknown>[];
+
+    if (pipeline.length === 0) {
+      throw new Error("Pipeline cannot be empty.");
+    }
+
+    // Validate that pipeline ends with $out or $merge
+    const lastStage = pipeline[pipeline.length - 1];
+    const hasOut = "$out" in lastStage;
+    const hasMerge = "$merge" in lastStage;
+
+    if (!hasOut && !hasMerge) {
+      throw new Error(
+        "Pipeline must end with $out or $merge stage. " +
+        "Use the regular 'aggregate' tool for read-only pipelines.",
+      );
+    }
+
+    // Execute the pipeline - $out/$merge don't return documents
+    await coll.aggregate(pipeline).toArray();
+
+    // Determine target collection for response
+    let targetCollection: string;
+    let targetDatabase: string = args.database as string;
+
+    if (hasOut) {
+      const outSpec = lastStage["$out"];
+      if (typeof outSpec === "string") {
+        targetCollection = outSpec;
+      } else if (typeof outSpec === "object" && outSpec !== null) {
+        const spec = outSpec as { db?: string; coll: string };
+        targetCollection = spec.coll;
+        if (spec.db) targetDatabase = spec.db;
+      } else {
+        targetCollection = "unknown";
+      }
+    } else {
+      const mergeSpec = lastStage["$merge"] as { into: string | { db?: string; coll: string } };
+      if (typeof mergeSpec.into === "string") {
+        targetCollection = mergeSpec.into;
+      } else {
+        targetCollection = mergeSpec.into.coll;
+        if (mergeSpec.into.db) targetDatabase = mergeSpec.into.db;
+      }
+    }
+
+    return {
+      ok: true,
+      operation: hasOut ? "$out" : "$merge",
+      source: {
+        database: args.database,
+        collection: args.collection,
+      },
+      target: {
+        database: targetDatabase,
+        collection: targetCollection,
+      },
+      message: `Pipeline executed. Results written to ${targetDatabase}.${targetCollection}.`,
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------
 
@@ -189,4 +291,5 @@ export const WRITE_TOOLS: DatabaseToolDef[] = [
   insertManyTool,
   createIndexTool,
   createCollectionTool,
+  aggregateOutTool,
 ];
