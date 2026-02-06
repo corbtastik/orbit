@@ -14,4 +14,4 @@ export {
 } from "@orbit/core";
 
 /** Application version (0.x.y = in development, pre-stable). */
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
