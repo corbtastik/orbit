@@ -150,8 +150,8 @@ function createMockConn(
 // ---------------------------------------------------------------------------
 
 describe("DATABASE_TOOLS registry", () => {
-  it("has exactly 24 tools", () => {
-    expect(DATABASE_TOOLS).toHaveLength(24);
+  it("has exactly 26 tools", () => {
+    expect(DATABASE_TOOLS).toHaveLength(26);
   });
 
   it("all names are unique", () => {
@@ -212,11 +212,11 @@ describe("operationType classification", () => {
     expect(readTools).toHaveLength(12);
   });
 
-  it("write tools: 9 total (3 write + 2 update + 4 delete)", () => {
+  it("write tools: 11 total (4 write + 1 file + 2 update + 4 delete)", () => {
     const writeTools = DATABASE_TOOLS.filter(
       (t) => t.operationType === "write",
     );
-    expect(writeTools).toHaveLength(9);
+    expect(writeTools).toHaveLength(11);
   });
 });
 

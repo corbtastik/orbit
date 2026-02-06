@@ -19,7 +19,7 @@ OrbitAI is a TypeScript monorepo providing conversational access to MongoDB Atla
 │                          ▼                                      │
 │                   ┌─────────────┐                               │
 │                   │   Server    │                               │
-│                   │  65 Tools   │──── @orbit/core               │
+│                   │  67 Tools   │──── @orbit/core               │
 │                   │ 15 Resources│        │                      │
 │                   │  5 Prompts  │        ▼                      │
 │                   └─────────────┘   Atlas Admin API             │
@@ -47,7 +47,7 @@ OrbitAI is a TypeScript monorepo providing conversational access to MongoDB Atla
 | Package | Description |
 |---------|-------------|
 | `@orbit/core` | Atlas API client, HTTP Digest auth, unified configuration, 41 domain action maps |
-| `@orbit/mcp-server` | MCP server with HTTP and stdio transports, 65 tools, 15 resources, 5 prompts |
+| `@orbit/mcp-server` | MCP server with HTTP and stdio transports, 67 tools, 15 resources, 5 prompts |
 | `@orbit/cli` | `orbit-ai` — conversational terminal shell with Anthropic, OpenAI, Google, and Ollama support |
 
 ## Capabilities
@@ -381,7 +381,7 @@ orbit/
 │   │       └── errors/        Error types
 │   └── mcp-server/        @orbit/mcp-server
 │       └── src/
-│           ├── tools/         65 tools (Atlas + Database)
+│           ├── tools/         67 tools (Atlas + Database)
 │           ├── transport/     HTTP and stdio transports
 │           ├── resources.ts   15 resources
 │           └── prompts.ts     5 prompts
