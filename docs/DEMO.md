@@ -164,3 +164,20 @@ MONGODB_CONN_ATLAS="mongodb+srv://user:pass@cluster.mongodb.net/..."
 ```
 
 These create connection names `local` and `atlas` that the prompts reference.
+
+## Mongoball DEMO
+
+I want to refine what we are doing for a demo of OrbitAI. These are the things I want to show in the demo (I'm listing them in no specifc order).
+
+- Show creating a local MongoDB database, populating a schema (documents), creating indexes
+- Show creating 5 users with roles/perms: adminUser (root on admin), powerUser (dbAdminAnyDatabase on admin, readWriteAnyDatabase on admin)
+- Use the mongoball data set: ~/dev/github/corbtastik/mongoball
+- Run 10 demo queries on mongoball, ranging from simple, medium to difficult
+- Show creating an Atlas MongoDB M10 Cluster on Azure, southcentralus region, called orbit-demo
+- Show creating a database admin user for orbit-demo cluster, add my IP to the whitelist
+- Show migrating the local mongoball database to Atlas orbit-demo cluster
+- Show connecting and running the demo queries on mongoball on Atlas orbit-demo cluster
+- Show adding a readonly replica on the orbit-demo cluster
+- Show running 10 other Atlas commands on the platform (security audit, billing, performance etc)
+- Show a few operations accross both the local MongoDB instance and the Atlas cluster to showcase the unified control plan aspects of Orbit
+- Lastly reset/teardown everything so that the environments are like they were before.
