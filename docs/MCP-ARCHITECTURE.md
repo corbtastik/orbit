@@ -972,15 +972,139 @@ Return system status, control plane IPs, and activity feeds.
 | 40 | `manage_live_migration` | Migration | 8 | 8 |
 | 41 | `get_platform_info` | Platform | 4 | 4 |
 
-**Totals: 41 tools, 474 actions, 473 API operations (100% coverage)**
+**Atlas Admin API Totals: 41 tools, 474 actions, 473 API operations (100% coverage)**
 
 *Note: `manage_clusters` has 21 actions covering 20 Clusters tag operations + 1 Rolling Index tag operation.*
+
+---
+
+### Domain 12: Relational Migrator (6 tools, 52 operations)
+
+#### `get_rm_system_info`
+Get Relational Migrator system information — version, health status, and environment.
+
+| Action | Method | Path | Description |
+|--------|--------|------|-------------|
+| `get_info` | GET | /api/v1/info | Return system info |
+| `get_news` | GET | /api/v1/news | Return news and updates |
+| `get_health` | GET | /actuator/health | Return health status |
+| `get_actuator` | GET | /actuator | Return actuator endpoints |
+| `get_environment` | GET | /api/v1/connectivity/environment | Return environment info |
+
+**Required parameters:** `action`
+
+#### `manage_rm_projects`
+Manage Relational Migrator projects — list, create, update, delete, export, and import migration projects.
+
+| Action | Method | Path | Description |
+|--------|--------|------|-------------|
+| `list` | GET | /api/v1/projects | Return all projects |
+| `get` | GET | /api/v1/projects/{projectId} | Return one project |
+| `create` | POST | /api/v1/projects | Create project |
+| `update` | PUT | /api/v1/projects/{projectId} | Update project |
+| `delete` | DELETE | /api/v1/projects/{projectId} | Delete project |
+| `export` | GET | /api/v1/projects/{projectId}/export | Export project |
+| `import` | POST | /api/v1/projects/import | Import project |
+| `copy` | POST | /api/v1/projects/{projectId}/copy | Copy project |
+| `get_recommendations` | GET | /api/v1/projects/{projectId}/recommendations | Get schema recommendations |
+| `get_global_mapping_options` | GET | /api/v1/projects/{projectId}/global-mapping-options | Get mapping options |
+| `get_job_readiness` | GET | /api/v1/projects/{projectId}/job-readiness | Check job readiness |
+| `get_model_cards` | GET | /api/v1/projects/{projectId}/model-cards | Get model cards |
+| `update_mapping` | POST | /api/v1/projects/{projectId}/mapping | Update mappings |
+| `create_initial_mapping` | POST | /api/v1/projects/{projectId}/initial-mapping | Create initial mapping |
+| `remove_source_tables` | POST | /api/v1/projects/{projectId}/remove-source-tables | Remove source tables |
+
+**Required parameters:** `action`
+
+#### `manage_rm_connections`
+Manage database connections — create, update, delete, and test JDBC and MongoDB connections.
+
+| Action | Method | Path | Description |
+|--------|--------|------|-------------|
+| `list_jdbc` | GET | /api/v1/connections/jdbc | Return JDBC connections |
+| `get_jdbc` | GET | /api/v1/connections/jdbc/{connectionId} | Return one JDBC connection |
+| `create_jdbc` | POST | /api/v1/connections/jdbc | Create JDBC connection |
+| `update_jdbc` | PUT | /api/v1/connections/jdbc/{connectionId} | Update JDBC connection |
+| `delete_jdbc` | DELETE | /api/v1/connections/jdbc/{connectionId} | Delete JDBC connection |
+| `test_jdbc` | POST | /api/v1/connections/jdbc/test | Test JDBC connection |
+| `list_mongodb` | GET | /api/v1/connections/mongodb | Return MongoDB connections |
+| `get_mongodb` | GET | /api/v1/connections/mongodb/{connectionId} | Return one MongoDB connection |
+| `create_mongodb` | POST | /api/v1/connections/mongodb | Create MongoDB connection |
+| `update_mongodb` | PUT | /api/v1/connections/mongodb/{connectionId} | Update MongoDB connection |
+| `delete_mongodb` | DELETE | /api/v1/connections/mongodb/{connectionId} | Delete MongoDB connection |
+| `test_mongodb` | POST | /api/v1/connections/mongodb/test | Test MongoDB connection |
+| `get_uri_details` | POST | /api/v1/connections/mongodb/uri-details | Parse URI details |
+
+**Required parameters:** `action`
+
+#### `manage_rm_schema`
+Discover and manage relational database schemas.
+
+| Action | Method | Path | Description |
+|--------|--------|------|-------------|
+| `get` | GET | /api/v1/schema | Return schema |
+| `discover_jdbc` | POST | /api/v1/schema/discover/jdbc | Discover from JDBC |
+| `parse_ddl` | POST | /api/v1/schema/parse/ddl | Parse DDL file |
+
+**Required parameters:** `action`
+
+#### `manage_rm_jobs`
+Manage migration jobs — create, start, stop, pause, resume, and monitor jobs.
+
+| Action | Method | Path | Description |
+|--------|--------|------|-------------|
+| `list` | GET | /api/v1/jobs | Return all jobs |
+| `get` | GET | /api/v1/jobs/{jobId} | Return one job |
+| `create` | POST | /api/v1/jobs | Create job |
+| `stop` | POST | /api/v1/jobs/{jobId}/stop | Stop job |
+| `pause` | POST | /api/v1/jobs/{jobId}/pause | Pause job |
+| `resume` | POST | /api/v1/jobs/{jobId}/resume | Resume job |
+| `retry` | POST | /api/v1/jobs/{jobId}/retry | Retry job |
+| `signal` | POST | /api/v1/jobs/{jobId}/signal | Send signal |
+| `get_logs` | GET | /api/v1/jobs/{jobId}/logs | Return job logs |
+| `download_logs` | GET | /api/v1/jobs/{jobId}/logs/download | Download logs |
+| `get_verification` | GET | /api/v1/verification/{jobId} | Return verification status |
+| `stop_verification` | POST | /api/v1/verification/{jobId}/stop | Stop verification |
+
+**Required parameters:** `action`
+
+#### `manage_rm_analysis`
+Run pre-migration analysis and view reports.
+
+| Action | Method | Path | Description |
+|--------|--------|------|-------------|
+| `get_report` | GET | /api/v1/analysis/report | Return analysis report |
+| `get_rules` | GET | /api/v1/analysis/rules | Return analysis rules |
+| `get_task` | GET | /api/v1/analysis/task | Return analysis task |
+| `cancel_task` | POST | /api/v1/analysis/task/cancel | Cancel analysis task |
+
+**Required parameters:** `action`
+
+---
+
+## Tool Summary (Updated)
+
+| # | Tool Name | Domain | Actions |
+|---|-----------|--------|---------|
+| 1-41 | *Atlas Admin API tools* | Various | 473 |
+| 42 | `get_rm_system_info` | RM System | 5 |
+| 43 | `manage_rm_projects` | RM Projects | 15 |
+| 44 | `manage_rm_connections` | RM Connections | 13 |
+| 45 | `manage_rm_schema` | RM Schema | 3 |
+| 46 | `manage_rm_jobs` | RM Jobs | 12 |
+| 47 | `manage_rm_analysis` | RM Analysis | 4 |
+
+**Grand Totals: 47 tools, 525 actions**
+- Atlas Admin API: 41 tools, 473 operations (100% coverage)
+- Relational Migrator: 6 tools, 52 operations
 
 ---
 
 ## MCP Resources
 
 Resources provide read-only contextual data that LLMs can request for grounding. They complement tools by providing structured snapshots without requiring action parameters.
+
+### Atlas Resources (15)
 
 | Resource URI | Description | Backed By |
 |-------------|-------------|-----------|
@@ -1000,9 +1124,32 @@ Resources provide read-only contextual data that LLMs can request for grounding.
 | `atlas://projects/{groupId}/processes` | MongoDB processes | listGroupProcesses |
 | `atlas://projects/{groupId}/integrations` | Third-party integrations | listGroupIntegrations |
 
+### MongoDB Resources (5)
+
+| Resource URI | Description |
+|-------------|-------------|
+| `mongodb://databases` | List all databases on connected instance |
+| `mongodb://databases/{database}/collections` | List collections in a database |
+| `mongodb://databases/{database}/collections/{collection}/schema` | Sample documents for schema inference |
+| `mongodb://databases/{database}/collections/{collection}/indexes` | List indexes on a collection |
+| `mongodb://databases/{database}/stats` | Database-level statistics |
+
+### Relational Migrator Resources (6)
+
+| Resource URI | Description |
+|-------------|-------------|
+| `rm://system` | System info, health, and drivers |
+| `rm://projects` | List all migration projects |
+| `rm://projects/{projectId}` | Project details |
+| `rm://projects/{projectId}/jobs` | Jobs for a project |
+| `rm://jdbc-connections` | JDBC connections |
+| `rm://mongodb-connections` | MongoDB connections |
+
 ### Resource Templates
 
 Resources with path parameters use MCP resource templates, allowing LLMs to request specific resources by filling in identifiers discovered from parent resources or tool results.
+
+**Total: 26 resources** (15 Atlas + 5 MongoDB + 6 Relational Migrator)
 
 ---
 
@@ -1063,6 +1210,29 @@ Review backup configuration and plan disaster recovery.
 | `clusterName` | yes | Cluster name |
 | `rto_minutes` | no | Recovery time objective in minutes |
 | `rpo_minutes` | no | Recovery point objective in minutes |
+
+### `migration_planner`
+Plan a relational-to-MongoDB migration using Relational Migrator.
+
+**Arguments:**
+| Name | Required | Description |
+|------|----------|-------------|
+| `source_database_type` | yes | Source database type (postgresql, mysql, oracle, sqlserver, db2, sybase) |
+| `source_connection` | no | Source JDBC connection name or connection details |
+| `target_connection` | no | Target MongoDB connection name or connection string |
+| `migration_strategy` | no | Strategy: snapshot (one-time) or cdc (continuous/real-time) |
+
+### `schema_designer`
+Design an optimal MongoDB schema from relational tables.
+
+**Arguments:**
+| Name | Required | Description |
+|------|----------|-------------|
+| `projectId` | yes | Relational Migrator project ID |
+| `access_patterns` | no | Common access patterns (e.g., "read orders with items") |
+| `optimization_goal` | no | Optimization focus: read-heavy, write-heavy, or balanced |
+
+**Total: 7 prompts** (5 Atlas + 2 Relational Migrator)
 
 ---
 

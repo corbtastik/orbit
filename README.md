@@ -19,10 +19,18 @@ OrbitAI is a TypeScript monorepo providing conversational access to MongoDB Atla
 │                          ▼                                      │
 │                   ┌─────────────┐                               │
 │                   │   Server    │                               │
-│                   │  67 Tools   │──── @orbit/core               │
-│                   │ 15 Resources│        │                      │
-│                   │  5 Prompts  │        ▼                      │
-│                   └─────────────┘   Atlas Admin API             │
+│                   │  73 Tools   │──── @orbit/core               │
+│                   │ 26 Resources│        │                      │
+│                   │  9 Prompts  │        ▼                      │
+│                   └──────┬──────┘   Atlas Admin API             │
+│                          │          Relational Migrator API     │
+└──────────────────────────┼──────────────────────────────────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        ▼                  ▼                  ▼
+   Atlas Cloud        MongoDB            Relational
+   Admin API          Driver             Migrator
+   (473 ops)          (26 tools)         (52 ops)
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -46,8 +54,8 @@ OrbitAI is a TypeScript monorepo providing conversational access to MongoDB Atla
 
 | Package | Description |
 |---------|-------------|
-| `@orbit/core` | Atlas API client, HTTP Digest auth, unified configuration, 41 domain action maps |
-| `@orbit/mcp-server` | MCP server with HTTP and stdio transports, 67 tools, 15 resources, 5 prompts |
+| `@orbit/core` | Atlas API client, Relational Migrator client, HTTP Digest auth, unified configuration, 47 domain action maps |
+| `@orbit/mcp-server` | MCP server with HTTP and stdio transports, 73 tools, 26 resources, 9 prompts |
 | `@orbit/cli` | `orbit-ai` — conversational terminal shell with Anthropic, OpenAI, Google, and Ollama support |
 
 ## Capabilities
@@ -59,6 +67,7 @@ OrbitAI is a TypeScript monorepo providing conversational access to MongoDB Atla
 - **Backup & Recovery** — Cloud backup snapshots, point-in-time restore, export to cloud storage
 - **Atlas Services** — Search indexes, Vector Search, Data Federation, Stream Processing
 - **Billing & Cost** — Invoices, cost explorer, line items
+- **Relational Migrator** — Schema discovery, project management, migration jobs, JDBC/MongoDB connections
 
 ## Prerequisites
 
@@ -211,6 +220,14 @@ Configuration priority: **CLI flags > Environment variables > Config file > Defa
 | `ORBIT_MCP_STDIO` | Force CLI to use stdio transport | `false` |
 | `ORBIT_MCP_HTTP_TIMEOUT` | HTTP connection timeout (ms) | `2000` |
 
+#### Relational Migrator
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ORBIT_RM_ENABLED` | Enable Relational Migrator integration | `false` |
+| `ORBIT_RM_URL` | Relational Migrator base URL | `http://127.0.0.1:8278` |
+| `ORBIT_RM_TIMEOUT` | Request timeout (ms) | `30000` |
+
 #### MongoDB Connections
 
 Define named connections using the `MONGODB_CONN_<NAME>` pattern:
@@ -354,7 +371,7 @@ npm run build -w @orbit/cli
 ### Test
 
 ```bash
-# Run all tests (228 tests)
+# Run all tests (289 tests)
 npm test
 
 # Run tests for a single package
@@ -375,16 +392,16 @@ orbit/
 │   ├── core/              @orbit/core
 │   │   └── src/
 │   │       ├── auth/          Digest auth
-│   │       ├── client/        AtlasClient
+│   │       ├── client/        AtlasClient, RelationalMigratorClient
 │   │       ├── config/        Unified config loader
-│   │       ├── domains/       41 domain action maps
+│   │       ├── domains/       47 domain action maps (41 Atlas + 6 RM)
 │   │       └── errors/        Error types
 │   └── mcp-server/        @orbit/mcp-server
 │       └── src/
-│           ├── tools/         67 tools (Atlas + Database)
+│           ├── tools/         73 tools (Atlas + Database + RM)
 │           ├── transport/     HTTP and stdio transports
-│           ├── resources.ts   15 resources
-│           └── prompts.ts     5 prompts
+│           ├── resources.ts   26 resources
+│           └── prompts.ts     9 prompts
 ├── apps/
 │   └── cli/               @orbit/cli
 │       └── src/
@@ -395,6 +412,84 @@ orbit/
 │           └── ui/            Terminal UI
 └── docs/                  Documentation
 ```
+
+---
+
+## Relational Migrator Integration
+
+OrbitAI integrates with [MongoDB Relational Migrator](https://www.mongodb.com/docs/relational-migrator/) for AI-powered relational-to-MongoDB migrations. This enables you to manage database migrations from Oracle, SQL Server, MySQL, PostgreSQL, DB2, and Sybase to MongoDB using natural language.
+
+### Prerequisites
+
+1. Download and install [Relational Migrator](https://www.mongodb.com/try/download/relational-migrator)
+2. Start Relational Migrator (runs on `http://127.0.0.1:8278` by default)
+3. Enable the integration in OrbitAI
+
+### Configuration
+
+Enable Relational Migrator integration in your config file or via environment variables:
+
+**Config file (`~/.orbit-ai/config.json`):**
+
+```json
+{
+  "relationalMigrator": {
+    "enabled": true,
+    "url": "http://127.0.0.1:8278",
+    "timeout": 30000
+  }
+}
+```
+
+**Environment variables:**
+
+```bash
+export ORBIT_RM_ENABLED=true
+export ORBIT_RM_URL="http://127.0.0.1:8278"
+```
+
+### Available Tools
+
+| Tool | Description | Actions |
+|------|-------------|---------|
+| `get_rm_system_info` | System info, health, and environment | 5 |
+| `manage_rm_projects` | Create, update, export, import projects | 15 |
+| `manage_rm_connections` | JDBC and MongoDB connection management | 13 |
+| `manage_rm_schema` | Schema discovery from JDBC or DDL | 3 |
+| `manage_rm_jobs` | Migration job lifecycle (create, start, stop, pause) | 12 |
+| `manage_rm_analysis` | Pre-migration analysis and reports | 4 |
+
+### Example Usage
+
+```
+❯ Is Relational Migrator running?
+  ✦ get_rm_system_info → get_health
+
+  Yes, Relational Migrator v1.15.2 is running and healthy.
+
+❯ List my migration projects
+  ✦ manage_rm_projects → list
+
+  You have 2 projects:
+  - oracle-to-mongo (created 2024-01-15)
+  - postgres-migration (created 2024-01-20)
+
+❯ Discover the schema from my Oracle connection
+  ✦ manage_rm_schema → discover_jdbc
+
+  Discovered 15 tables:
+  - CUSTOMERS (25 columns)
+  - ORDERS (12 columns)
+  - ORDER_ITEMS (8 columns)
+  ...
+```
+
+### Prompts
+
+Two prompts guide complex migration workflows:
+
+- **`migration_planner`** — Plan a relational-to-MongoDB migration end-to-end
+- **`schema_designer`** — Design optimal MongoDB schema from relational tables
 
 ---
 
