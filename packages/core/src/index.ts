@@ -1,5 +1,5 @@
 // Client
-export { AtlasClient } from "./client/index.js";
+export { AtlasClient, RelationalMigratorClient } from "./client/index.js";
 
 // Auth
 export { resolveConfig } from "./auth/index.js";
@@ -30,7 +30,13 @@ export type {
 } from "./config/index.js";
 
 // Errors
-export { AtlasApiError, AtlasConfigError } from "./errors/index.js";
+export {
+  AtlasApiError,
+  AtlasConfigError,
+  RelationalMigratorError,
+  RelationalMigratorUnavailableError,
+  RelationalMigratorConfigError,
+} from "./errors/index.js";
 
 // Domains
 export * from "./domains/index.js";
@@ -45,4 +51,18 @@ export type {
   HttpMethod,
   RequestOptions,
   ApiResponse,
+  // Relational Migrator types
+  RelationalMigratorConfig,
+  ResolvedRelationalMigratorConfig,
+  RelationalMigratorErrorBody,
+  RelationalDatabaseType,
+  ProjectSummary,
+  Project,
+  MappingRule,
+  JdbcConnection,
+  MongoDBConnection,
+  MigrationJob,
+  JobStatus,
+  SystemInfo,
+  HealthStatus,
 } from "./types/index.js";

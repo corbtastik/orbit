@@ -68,3 +68,13 @@ export { auditingActions } from "./compliance.js";
 export { liveMigrationActions } from "./migration.js";
 
 export { platformActions } from "./platform.js";
+
+// Relational Migrator domain action maps
+export {
+  rmSystemActions,
+  rmProjectActions,
+  rmConnectionActions,
+  rmSchemaActions,
+  rmJobActions,
+  rmAnalysisActions,
+} from "./relational-migrator/index.js";
