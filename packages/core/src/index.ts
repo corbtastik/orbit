@@ -25,6 +25,7 @@ export type {
   LlmConfigSection,
   McpConfigSection,
   DefaultsConfigSection,
+  RelationalMigratorConfigSection,
   OrbitConfig,
   ResolvedOrbitConfig,
 } from "./config/index.js";

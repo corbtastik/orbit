@@ -98,6 +98,18 @@ export interface DefaultsConfigSection {
 }
 
 /**
+ * Relational Migrator configuration.
+ */
+export interface RelationalMigratorConfigSection {
+  /** Enable RM integration. Default: false */
+  enabled?: boolean;
+  /** RM API base URL. Default: http://127.0.0.1:8278 */
+  url?: string;
+  /** Request timeout in ms. Default: 30000 */
+  timeout?: number;
+}
+
+/**
  * Complete OrbitAI configuration structure.
  *
  * This is the shape of ~/.orbit-ai/config.json
@@ -109,6 +121,7 @@ export interface OrbitConfig {
   llm?: LlmConfigSection;
   mcp?: McpConfigSection;
   defaults?: DefaultsConfigSection;
+  relationalMigrator?: RelationalMigratorConfigSection;
 }
 
 /**
@@ -130,6 +143,7 @@ export interface ResolvedOrbitConfig {
   };
   mcp: Required<McpConfigSection>;
   defaults: Required<DefaultsConfigSection>;
+  relationalMigrator: Required<RelationalMigratorConfigSection>;
 }
 
 /**
@@ -169,6 +183,11 @@ export const ENV = {
   ORBIT_MCP_URL: "ORBIT_MCP_URL",
   ORBIT_MCP_STDIO: "ORBIT_MCP_STDIO",
   ORBIT_MCP_HTTP_TIMEOUT: "ORBIT_MCP_HTTP_TIMEOUT",
+
+  // Relational Migrator
+  ORBIT_RM_ENABLED: "ORBIT_RM_ENABLED",
+  ORBIT_RM_URL: "ORBIT_RM_URL",
+  ORBIT_RM_TIMEOUT: "ORBIT_RM_TIMEOUT",
 } as const;
 
 /**
@@ -199,6 +218,11 @@ export const DEFAULTS = {
     outputFormat: "markdown" as OutputFormat,
     maxToolTurns: 10,
     verbose: false,
+  },
+  relationalMigrator: {
+    enabled: false,
+    url: "http://127.0.0.1:8278",
+    timeout: 30000,
   },
   /** Default model per provider. */
   providerModels: {

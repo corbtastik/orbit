@@ -18,6 +18,7 @@ export type {
   LlmConfigSection,
   McpConfigSection,
   DefaultsConfigSection,
+  RelationalMigratorConfigSection,
   OrbitConfig,
   ResolvedOrbitConfig,
 } from "./types.js";

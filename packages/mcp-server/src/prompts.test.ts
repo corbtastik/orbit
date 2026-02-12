@@ -9,11 +9,13 @@ const EXPECTED_NAMES = [
   "disaster_recovery_planner",
   "data_explorer",
   "query_optimizer",
+  "migration_planner",
+  "schema_designer",
 ];
 
 describe("PROMPT_REGISTRY", () => {
-  it("has 7 entries (5 Atlas + 2 database)", () => {
-    expect(PROMPT_REGISTRY).toHaveLength(7);
+  it("has 9 entries (5 Atlas + 2 database + 2 RM)", () => {
+    expect(PROMPT_REGISTRY).toHaveLength(9);
   });
 
   it("has expected prompt names", () => {
@@ -86,5 +88,30 @@ describe("PROMPT_REGISTRY", () => {
     expect(messages.length).toBeGreaterThan(0);
     expect(messages[0].content.text).toContain("test.users");
     expect(messages[0].content.text).toContain("explain");
+  });
+
+  it("migration_planner build() includes source database type and RM tools", () => {
+    const prompt = PROMPT_REGISTRY.find((p) => p.name === "migration_planner")!;
+    const messages = prompt.build({
+      source_database_type: "postgresql",
+    });
+    expect(messages.length).toBeGreaterThan(0);
+    expect(messages[0].content.text).toContain("postgresql");
+    expect(messages[0].content.text).toContain("get_rm_system_info");
+    expect(messages[0].content.text).toContain("manage_rm_connections");
+    expect(messages[0].content.text).toContain("manage_rm_projects");
+  });
+
+  it("schema_designer build() includes project ID and schema recommendations", () => {
+    const prompt = PROMPT_REGISTRY.find((p) => p.name === "schema_designer")!;
+    const messages = prompt.build({
+      projectId: "proj-123",
+      optimization_goal: "read-heavy",
+    });
+    expect(messages.length).toBeGreaterThan(0);
+    expect(messages[0].content.text).toContain("proj-123");
+    expect(messages[0].content.text).toContain("read-heavy");
+    expect(messages[0].content.text).toContain("get_recommendations");
+    expect(messages[0].content.text).toContain("manage_rm_schema");
   });
 });

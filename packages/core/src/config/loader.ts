@@ -202,6 +202,21 @@ export function loadConfig(configPath?: string): ResolvedOrbitConfig {
         file.defaults?.verbose ??
         DEFAULTS.defaults.verbose,
     },
+
+    relationalMigrator: {
+      enabled: toBool(
+        process.env[ENV.ORBIT_RM_ENABLED] ?? file.relationalMigrator?.enabled,
+        DEFAULTS.relationalMigrator.enabled,
+      ),
+      url:
+        process.env[ENV.ORBIT_RM_URL] ??
+        file.relationalMigrator?.url ??
+        DEFAULTS.relationalMigrator.url,
+      timeout: toInt(
+        process.env[ENV.ORBIT_RM_TIMEOUT] ?? file.relationalMigrator?.timeout,
+        DEFAULTS.relationalMigrator.timeout,
+      ),
+    },
   };
 }
 

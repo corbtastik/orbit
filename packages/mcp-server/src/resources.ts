@@ -1,8 +1,9 @@
-import type { AtlasClient } from "@orbit/core";
+import type { AtlasClient, RelationalMigratorClient } from "@orbit/core";
 import type { ConnectionManager } from "./tools/index.js";
 
 /**
- * Defines an MCP resource backed by an Atlas API call or MongoDB connection.
+ * Defines an MCP resource backed by an Atlas API call, MongoDB connection,
+ * or Relational Migrator API.
  */
 export interface ResourceDef {
   uri: string;
@@ -15,6 +16,7 @@ export interface ResourceDef {
   read: (
     client: AtlasClient,
     conn: ConnectionManager | undefined,
+    rmClient: RelationalMigratorClient | undefined,
     vars: Record<string, string>,
   ) => Promise<unknown>;
 }
@@ -47,7 +49,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Organization details",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) => c.get(`${P}/orgs/${enc(v.orgId)}`),
+    read: (c, _conn, _rm, v) => c.get(`${P}/orgs/${enc(v.orgId)}`),
   },
   {
     uri: "atlas://orgs/{orgId}/projects",
@@ -55,7 +57,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Projects in one organization",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) => c.get(`${P}/orgs/${enc(v.orgId)}/groups`),
+    read: (c, _conn, _rm, v) => c.get(`${P}/orgs/${enc(v.orgId)}/groups`),
   },
 
   // Projects
@@ -73,7 +75,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Project details",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) => c.get(`${P}/groups/${enc(v.groupId)}`),
+    read: (c, _conn, _rm, v) => c.get(`${P}/groups/${enc(v.groupId)}`),
   },
   {
     uri: "atlas://projects/{groupId}/clusters",
@@ -81,7 +83,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Clusters in one project",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) => c.get(`${P}/groups/${enc(v.groupId)}/clusters`),
+    read: (c, _conn, _rm, v) => c.get(`${P}/groups/${enc(v.groupId)}/clusters`),
   },
   {
     uri: "atlas://projects/{groupId}/clusters/{clusterName}",
@@ -89,7 +91,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Cluster details",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) =>
+    read: (c, _conn, _rm, v) =>
       c.get(
         `${P}/groups/${enc(v.groupId)}/clusters/${enc(v.clusterName)}`,
       ),
@@ -100,7 +102,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Database users in one project",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) =>
+    read: (c, _conn, _rm, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/databaseUsers`),
   },
   {
@@ -109,7 +111,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "IP access list entries",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) =>
+    read: (c, _conn, _rm, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/accessList`),
   },
   {
@@ -118,7 +120,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Active alerts in one project",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) =>
+    read: (c, _conn, _rm, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/alerts`),
   },
   {
@@ -127,7 +129,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Alert configurations",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) =>
+    read: (c, _conn, _rm, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/alertConfigs`),
   },
   {
@@ -136,7 +138,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Backup snapshots for one cluster",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) =>
+    read: (c, _conn, _rm, v) =>
       c.get(
         `${P}/groups/${enc(v.groupId)}/clusters/${enc(v.clusterName)}/backup/snapshots`,
       ),
@@ -147,7 +149,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Recent project events",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) =>
+    read: (c, _conn, _rm, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/events`),
   },
   {
@@ -156,7 +158,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "MongoDB processes in one project",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) =>
+    read: (c, _conn, _rm, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/processes`),
   },
   {
@@ -165,7 +167,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Third-party integrations",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) =>
+    read: (c, _conn, _rm, v) =>
       c.get(`${P}/groups/${enc(v.groupId)}/integrations`),
   },
 
@@ -190,7 +192,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "List all collections in a MongoDB database",
     mimeType: "application/json",
     isTemplate: true,
-    read: (_c, conn, v) => {
+    read: (_c, conn, _rm, v) => {
       requireConnection(conn);
       return conn!.getDb(v.database).listCollections().toArray();
     },
@@ -201,7 +203,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Sample documents from a collection to infer schema",
     mimeType: "application/json",
     isTemplate: true,
-    read: async (_c, conn, v) => {
+    read: async (_c, conn, _rm, v) => {
       requireConnection(conn);
       const coll = conn!.getCollection(v.database, v.collection);
       return coll.aggregate([{ $sample: { size: 5 } }]).toArray();
@@ -213,7 +215,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "List indexes on a MongoDB collection",
     mimeType: "application/json",
     isTemplate: true,
-    read: (_c, conn, v) => {
+    read: (_c, conn, _rm, v) => {
       requireConnection(conn);
       return conn!.getCollection(v.database, v.collection).indexes();
     },
@@ -224,9 +226,80 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Database-level statistics (document count, storage size, etc.)",
     mimeType: "application/json",
     isTemplate: true,
-    read: (_c, conn, v) => {
+    read: (_c, conn, _rm, v) => {
       requireConnection(conn);
       return conn!.getDb(v.database).command({ dbStats: 1 });
+    },
+  },
+
+  // =========================================================================
+  // Relational Migrator Resources (6)
+  // =========================================================================
+
+  {
+    uri: "rm://system",
+    name: "rm_system_info",
+    description: "Relational Migrator system information (version, health, drivers)",
+    mimeType: "application/json",
+    isTemplate: false,
+    read: (_c, _conn, rm) => {
+      requireRM(rm);
+      return rm!.getSystemInfo();
+    },
+  },
+  {
+    uri: "rm://projects",
+    name: "rm_projects",
+    description: "List all Relational Migrator migration projects",
+    mimeType: "application/json",
+    isTemplate: false,
+    read: (_c, _conn, rm) => {
+      requireRM(rm);
+      return rm!.get("/api/v1/projects");
+    },
+  },
+  {
+    uri: "rm://projects/{projectId}",
+    name: "rm_project",
+    description: "Relational Migrator project details",
+    mimeType: "application/json",
+    isTemplate: true,
+    read: (_c, _conn, rm, v) => {
+      requireRM(rm);
+      return rm!.get(`/api/v1/projects/${enc(v.projectId)}`);
+    },
+  },
+  {
+    uri: "rm://projects/{projectId}/jobs",
+    name: "rm_project_jobs",
+    description: "Migration jobs for a Relational Migrator project",
+    mimeType: "application/json",
+    isTemplate: true,
+    read: (_c, _conn, rm, v) => {
+      requireRM(rm);
+      return rm!.get(`/api/v1/projects/${enc(v.projectId)}/jobs`);
+    },
+  },
+  {
+    uri: "rm://jdbc-connections",
+    name: "rm_jdbc_connections",
+    description: "List JDBC (relational database) connections in Relational Migrator",
+    mimeType: "application/json",
+    isTemplate: false,
+    read: (_c, _conn, rm) => {
+      requireRM(rm);
+      return rm!.get("/api/v1/connections/jdbc");
+    },
+  },
+  {
+    uri: "rm://mongodb-connections",
+    name: "rm_mongodb_connections",
+    description: "List MongoDB connections in Relational Migrator",
+    mimeType: "application/json",
+    isTemplate: false,
+    read: (_c, _conn, rm) => {
+      requireRM(rm);
+      return rm!.get("/api/v1/connections/mongodb");
     },
   },
 ];
@@ -246,6 +319,22 @@ function requireConnection(conn: ConnectionManager | undefined): void {
   if (!conn?.isConnected()) {
     throw new Error(
       "Not connected to MongoDB. Use the connect tool first.",
+    );
+  }
+}
+
+/**
+ * Throw a clear error if Relational Migrator client is not available.
+ */
+function requireRM(rm: RelationalMigratorClient | undefined): void {
+  if (!rm) {
+    throw new Error(
+      "Relational Migrator client is not configured.",
+    );
+  }
+  if (!rm.enabled) {
+    throw new Error(
+      "Relational Migrator integration is disabled. Set ORBIT_RM_ENABLED=true to enable.",
     );
   }
 }

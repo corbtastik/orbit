@@ -21,7 +21,15 @@ describe("createServer", () => {
   it("returns a Server instance with readOnly option", () => {
     const mockClient = {} as AtlasClient;
     const conn = new ConnectionManager();
-    const server = createServer(mockClient, conn, { readOnly: true });
+    const server = createServer(mockClient, conn, undefined, { readOnly: true });
+    expect(server).toBeDefined();
+  });
+
+  it("returns a Server instance with rmClient", () => {
+    const mockClient = {} as AtlasClient;
+    const conn = new ConnectionManager();
+    // rmClient can be undefined - will gracefully degrade
+    const server = createServer(mockClient, conn, undefined);
     expect(server).toBeDefined();
   });
 });

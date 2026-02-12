@@ -8,14 +8,19 @@ import {
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { AtlasClient, dispatch } from "@orbit/core";
+import {
+  AtlasClient,
+  RelationalMigratorClient,
+  dispatch,
+} from "@orbit/core";
 import type { ActionMap } from "@orbit/core";
 import {
   TOOL_REGISTRY,
   buildToolSchema,
   DATABASE_TOOLS,
+  RM_TOOL_REGISTRY,
 } from "./tools/index.js";
-import type { DatabaseToolDef } from "./tools/index.js";
+import type { DatabaseToolDef, RMToolDef } from "./tools/index.js";
 import type { ConnectionManager } from "./tools/index.js";
 import {
   RESOURCE_REGISTRY,
@@ -34,13 +39,17 @@ export interface ServerOptions {
 /**
  * Create and configure the OrbitAI MCP server.
  *
- * Supports two tool systems:
+ * Supports three tool systems:
  *   1. Atlas Admin API tools — routed through dispatch() and ActionMaps
  *   2. Database tools — routed through the MongoDB driver via ConnectionManager
+ *   3. Relational Migrator tools — routed through RelationalMigratorClient
  *
  * The ConnectionManager is optional. If omitted (or no connection is active),
  * database tools return a clear "not connected" error. Connection tools are
  * always available so the LLM can establish a connection at runtime.
+ *
+ * The RelationalMigratorClient is optional. If omitted, RM tools are still
+ * listed but will return an error when called.
  *
  * Multi-connection support: Tools can specify a `connection` parameter to
  * target a specific named connection. If not specified, uses the default
@@ -49,10 +58,11 @@ export interface ServerOptions {
 export function createServer(
   client: AtlasClient,
   conn?: ConnectionManager,
+  rmClient?: RelationalMigratorClient,
   options: ServerOptions = {},
 ): Server {
   const server = new Server(
-    { name: "orbit-mcp-server", version: "1.1.0" },
+    { name: "orbit-mcp-server", version: "1.2.0" },
     {
       capabilities: {
         tools: {},
@@ -60,10 +70,11 @@ export function createServer(
         prompts: {},
       },
       instructions:
-        "OrbitAI MCP Server — provides 100% coverage of the MongoDB Atlas Admin API v2 " +
-        "and direct MongoDB database operations. " +
+        "OrbitAI MCP Server — provides 100% coverage of the MongoDB Atlas Admin API v2, " +
+        "direct MongoDB database operations, and Relational Migrator integration. " +
         "Use Atlas tools (manage_*) for infrastructure: clusters, security, backups, monitoring. " +
         "Use database tools (find, aggregate, insert-many, etc.) for querying and managing data. " +
+        "Use RM tools (manage_rm_*, get_rm_*) for relational-to-MongoDB migrations. " +
         "Use the connect tool to establish a MongoDB connection before running database operations. " +
         "Use list-connections to see available connections. " +
         "Specify a connection parameter on database tools to target a specific named connection. " +
@@ -73,8 +84,8 @@ export function createServer(
 
   const readOnly = options.readOnly ?? false;
 
-  registerTools(server, client, conn, readOnly);
-  registerResources(server, client, conn);
+  registerTools(server, client, conn, rmClient, readOnly);
+  registerResources(server, client, conn, rmClient);
   registerPrompts(server);
 
   return server;
@@ -88,6 +99,7 @@ function registerTools(
   server: Server,
   client: AtlasClient,
   conn: ConnectionManager | undefined,
+  rmClient: RelationalMigratorClient | undefined,
   readOnly: boolean,
 ): void {
   // --- Atlas Admin API tool index ---
@@ -111,7 +123,21 @@ function registerTools(
     dbToolIndex.set(def.name, def);
   }
 
-  // tools/list — return Atlas tools + database tools in a single list
+  // --- Relational Migrator tool index ---
+  const rmToolIndex = new Map<
+    string,
+    { description: string; actions: ActionMap; inputSchema: ReturnType<typeof buildToolSchema> }
+  >();
+
+  for (const def of RM_TOOL_REGISTRY) {
+    rmToolIndex.set(def.name, {
+      description: def.description,
+      actions: def.actions,
+      inputSchema: buildToolSchema(def.actions),
+    });
+  }
+
+  // tools/list — return Atlas tools + database tools + RM tools in a single list
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       // Atlas Admin API tools
@@ -129,10 +155,19 @@ function registerTools(
         description: def.description,
         inputSchema: def.inputSchema,
       })),
+      // Relational Migrator tools
+      ...RM_TOOL_REGISTRY.map((def) => {
+        const entry = rmToolIndex.get(def.name)!;
+        return {
+          name: def.name,
+          description: def.description,
+          inputSchema: entry.inputSchema,
+        };
+      }),
     ],
   }));
 
-  // tools/call — route to database tools or Atlas tools
+  // tools/call — route to database tools, RM tools, or Atlas tools
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name } = request.params;
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
@@ -141,6 +176,12 @@ function registerTools(
     const dbTool = dbToolIndex.get(name);
     if (dbTool) {
       return handleDatabaseTool(dbTool, conn, args, readOnly);
+    }
+
+    // --- Check Relational Migrator tools ---
+    const rmEntry = rmToolIndex.get(name);
+    if (rmEntry) {
+      return handleRelationalMigratorTool(rmEntry, rmClient, args);
     }
 
     // --- Fall through to Atlas Admin API tools ---
@@ -191,6 +232,102 @@ function registerTools(
       return errorResult(message);
     }
   });
+}
+
+/**
+ * Handle a Relational Migrator tool call.
+ */
+async function handleRelationalMigratorTool(
+  entry: { actions: ActionMap },
+  rmClient: RelationalMigratorClient | undefined,
+  args: Record<string, unknown>,
+) {
+  if (!rmClient) {
+    return errorResult(
+      "Relational Migrator client is not configured. " +
+      "Ensure Relational Migrator is running at http://127.0.0.1:8278.",
+    );
+  }
+
+  if (!rmClient.enabled) {
+    return errorResult(
+      "Relational Migrator integration is disabled. " +
+      "Set ORBIT_RM_ENABLED=true to enable.",
+    );
+  }
+
+  const action = args.action as string | undefined;
+  if (!action) {
+    return errorResult(
+      `Missing required parameter "action". Available actions: ${Object.keys(entry.actions).join(", ")}`,
+    );
+  }
+
+  const spec = entry.actions[action];
+  if (!spec) {
+    return errorResult(
+      `Unknown action "${action}". Available actions: ${Object.keys(entry.actions).join(", ")}`,
+    );
+  }
+
+  // Guard against body as stringified JSON
+  let body = args.body;
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return errorResult("body must be a JSON object, not a string.");
+    }
+  }
+
+  // Resolve path parameters
+  const pathParams = (args.params as Record<string, string>) ?? {};
+  let path = spec.path;
+  for (const [key, value] of Object.entries(pathParams)) {
+    path = path.replace(`{${key}}`, encodeURIComponent(value));
+  }
+
+  // Check for unresolved path parameters
+  const unresolvedMatch = path.match(/\{(\w+)\}/);
+  if (unresolvedMatch) {
+    return errorResult(
+      `Missing required path parameter: ${unresolvedMatch[1]}`,
+    );
+  }
+
+  try {
+    const query = args.query as Record<string, string | number | boolean | undefined> | undefined;
+
+    let result: unknown;
+    switch (spec.method) {
+      case "GET":
+        result = await rmClient.get(path, query);
+        break;
+      case "POST":
+        result = await rmClient.post(path, spec.hasBody ? body : undefined);
+        break;
+      case "PUT":
+        result = await rmClient.put(path, spec.hasBody ? body : undefined);
+        break;
+      case "DELETE":
+        result = await rmClient.delete(path);
+        break;
+      default:
+        return errorResult(`Unsupported HTTP method: ${spec.method}`);
+    }
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return errorResult(message);
+  }
 }
 
 /**
@@ -280,6 +417,7 @@ function registerResources(
   server: Server,
   client: AtlasClient,
   conn: ConnectionManager | undefined,
+  rmClient: RelationalMigratorClient | undefined,
 ): void {
   const staticResources = RESOURCE_REGISTRY.filter((r) => !r.isTemplate);
   const templateResources = RESOURCE_REGISTRY.filter((r) => r.isTemplate);
@@ -319,7 +457,7 @@ function registerResources(
       // Try static match first
       for (const res of staticResources) {
         if (res.uri === uri) {
-          const data = await res.read(client, conn, {});
+          const data = await res.read(client, conn, rmClient, {});
           return {
             contents: [
               {
@@ -336,7 +474,7 @@ function registerResources(
       for (const res of templateResources) {
         const vars = extractVariables(res.uri, uri);
         if (vars) {
-          const data = await res.read(client, conn, vars);
+          const data = await res.read(client, conn, rmClient, vars);
           return {
             contents: [
               {

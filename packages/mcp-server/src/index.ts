@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   AtlasClient,
+  RelationalMigratorClient,
   loadConfig,
   hasAtlasCredentials,
   CONFIG_FILE,
@@ -117,7 +118,14 @@ async function runStdioMode(config: ResolvedOrbitConfig): Promise<void> {
     await conn.connect(config.mongodb.default);
   }
 
-  const server = createServer(client, conn, { readOnly: config.server.readOnly });
+  // Create Relational Migrator client if enabled
+  const rmClient = new RelationalMigratorClient({
+    baseUrl: config.relationalMigrator.url,
+    timeoutMs: config.relationalMigrator.timeout,
+    enabled: config.relationalMigrator.enabled,
+  });
+
+  const server = createServer(client, conn, rmClient, { readOnly: config.server.readOnly });
   const transport = new StdioServerTransport();
 
   await server.connect(transport);
@@ -145,10 +153,18 @@ async function runHttpMode(config: ResolvedOrbitConfig, port: number, host: stri
     baseUrl: config.atlas.baseUrl,
   });
 
+  // Create Relational Migrator client if enabled
+  const rmClient = new RelationalMigratorClient({
+    baseUrl: config.relationalMigrator.url,
+    timeoutMs: config.relationalMigrator.timeout,
+    enabled: config.relationalMigrator.enabled,
+  });
+
   const httpServer = createHttpServer({
     port,
     host,
     atlasClient: client,
+    rmClient,
     readOnly: config.server.readOnly,
   });
 

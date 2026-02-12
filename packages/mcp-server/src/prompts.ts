@@ -426,6 +426,140 @@ Steps:
 };
 
 // ---------------------------------------------------------------------------
+// Prompt 8: migration_planner (Relational Migrator)
+// ---------------------------------------------------------------------------
+const migrationPlanner: PromptDef = {
+  name: "migration_planner",
+  description:
+    "Plan a relational-to-MongoDB migration using Relational Migrator. " +
+    "Analyzes source schema, recommends target MongoDB schema, and creates a migration project.",
+  arguments: [
+    {
+      name: "source_database_type",
+      description:
+        "Source database type: postgresql, mysql, oracle, sqlserver, db2, or sybase",
+      required: true,
+    },
+    {
+      name: "source_connection",
+      description:
+        "Source JDBC connection name (if already configured in RM) or connection details",
+      required: false,
+    },
+    {
+      name: "target_connection",
+      description:
+        "Target MongoDB connection name (if already configured in RM) or connection string",
+      required: false,
+    },
+    {
+      name: "migration_strategy",
+      description:
+        "Strategy: snapshot (one-time) or cdc (continuous/real-time)",
+      required: false,
+    },
+  ],
+  build: (args) => {
+    const strategy = args.migration_strategy ?? "snapshot";
+    const sourceConn = args.source_connection
+      ? `\nSource connection: ${args.source_connection}`
+      : "";
+    const targetConn = args.target_connection
+      ? `\nTarget connection: ${args.target_connection}`
+      : "";
+
+    return [
+      userMsg(
+        `Plan a migration from ${args.source_database_type} to MongoDB using Relational Migrator.
+${sourceConn}${targetConn}
+Migration strategy: ${strategy}
+
+Steps:
+1. Use **get_rm_system_info** with action "get_info" to verify Relational Migrator is running and check supported drivers.
+2. Use **manage_rm_connections** with action "list_jdbc" to see existing JDBC connections.
+3. Use **manage_rm_connections** with action "list_mongodb" to see existing MongoDB connections.
+4. If connections don't exist:
+   - Create JDBC connection using manage_rm_connections action "create_jdbc"
+   - Create MongoDB connection using manage_rm_connections action "create_mongodb"
+5. Test both connections using "test_jdbc" and "test_mongodb" actions.
+6. Use **manage_rm_schema** with action "discover_jdbc" to discover the source database schema.
+7. Use **manage_rm_projects** with action "create" to create a new migration project.
+8. Use **manage_rm_projects** with action "get_recommendations" to get schema mapping recommendations.
+9. Use **manage_rm_analysis** with action "get_report" to run pre-migration analysis and identify risks.
+10. Summarize the migration plan:
+    - Source tables discovered
+    - Recommended MongoDB collections
+    - Data transformation rules
+    - Potential issues from analysis
+    - Estimated migration approach (${strategy})`,
+      ),
+    ];
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Prompt 9: schema_designer (Relational Migrator)
+// ---------------------------------------------------------------------------
+const schemaDesigner: PromptDef = {
+  name: "schema_designer",
+  description:
+    "Design an optimal MongoDB schema from relational tables. " +
+    "Recommends embedding vs referencing strategies based on access patterns.",
+  arguments: [
+    {
+      name: "projectId",
+      description: "Relational Migrator project ID to use for schema design",
+      required: true,
+    },
+    {
+      name: "access_patterns",
+      description:
+        "Common access patterns, e.g., 'read orders with items', 'update user profile'",
+      required: false,
+    },
+    {
+      name: "optimization_goal",
+      description:
+        "Optimization focus: read-heavy, write-heavy, or balanced",
+      required: false,
+    },
+  ],
+  build: (args) => {
+    const goal = args.optimization_goal ?? "balanced";
+    const patterns = args.access_patterns
+      ? `\nAccess patterns to optimize for: ${args.access_patterns}`
+      : "";
+
+    return [
+      userMsg(
+        `Design an optimal MongoDB schema for project ${args.projectId}.
+${patterns}
+Optimization goal: ${goal}
+
+Steps:
+1. Use **manage_rm_projects** with action "get" to retrieve the project details and current schema.
+2. Use **manage_rm_schema** with action "get" to get the relational schema information.
+3. Use **manage_rm_projects** with action "get_recommendations" for AI-powered schema recommendations.
+4. Analyze the relational schema and recommend:
+   - Which tables should become embedded subdocuments (1:1 or 1:few relationships)
+   - Which tables should remain as separate collections with references (1:many or many:many)
+   - Denormalization opportunities for read-heavy access patterns
+5. For each recommended collection:
+   - Document structure with field types
+   - Recommended indexes based on access patterns
+   - Estimated document size and growth
+6. Consider MongoDB best practices:
+   - 16MB document size limit
+   - Avoid unbounded arrays
+   - Use appropriate field names (short but descriptive)
+7. Provide mapping rules that can be applied using manage_rm_projects action "update".
+8. Run **manage_rm_analysis** with action "get_report" to validate the schema design.`,
+      ),
+    ];
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -437,4 +571,6 @@ export const PROMPT_REGISTRY: PromptDef[] = [
   disasterRecoveryPlanner,
   dataExplorer,
   queryOptimizer,
+  migrationPlanner,
+  schemaDesigner,
 ];
