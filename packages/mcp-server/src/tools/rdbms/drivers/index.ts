@@ -2,10 +2,10 @@
  * RDBMS Driver factory and exports.
  *
  * Provides a unified factory function to create database-specific drivers.
- * Driver implementations are added in subsequent phases.
  */
 
 import type { RdbmsDriver } from "./types.js";
+import { PostgresDriver } from "./postgres.js";
 
 export type {
   RdbmsDriver,
@@ -15,6 +15,8 @@ export type {
   IndexInfo,
   StreamRowsOptions,
 } from "./types.js";
+
+export { PostgresDriver, PG_TYPE_MAP, mapPostgresTypeToBson } from "./postgres.js";
 
 /**
  * Supported RDBMS types.
@@ -31,9 +33,7 @@ export type RdbmsType = "postgres" | "oracle" | "sqlite" | "mysql" | "mssql";
 export function createDriver(type: RdbmsType): RdbmsDriver {
   switch (type) {
     case "postgres":
-      throw new Error(
-        "PostgreSQL driver not yet implemented. Coming in Phase 2.",
-      );
+      return new PostgresDriver();
     case "oracle":
       throw new Error(
         "Oracle driver not yet implemented. Coming in Phase 4.",

@@ -27,6 +27,9 @@ export type {
   StreamRowsOptions,
 } from "./drivers/index.js";
 
+// Driver exports
+export { PostgresDriver, PG_TYPE_MAP, mapPostgresTypeToBson } from "./drivers/index.js";
+
 // Core types
 export type {
   RdbmsOperationType,
@@ -41,9 +44,9 @@ export type {
   PatternRecommendation,
 } from "./types.js";
 
-// Tool definitions will be added in subsequent phases
-// import { CONNECTION_TOOLS } from "./connection-tools.js";
-// import { SCHEMA_TOOLS } from "./schema-tools.js";
+// Tool imports
+import { CONNECTION_TOOLS } from "./connection-tools.js";
+import { SCHEMA_TOOLS } from "./schema-tools.js";
 // import { MAPPING_TOOLS } from "./mapping-tools.js";
 // import { MIGRATION_TOOLS } from "./migration-tools.js";
 // import { UTILITY_TOOLS } from "./utility-tools.js";
@@ -54,14 +57,13 @@ import type { RdbmsToolDef } from "./types.js";
  * All RDBMS migration tools.
  *
  * Tools are registered with the MCP server and exposed to LLM clients.
- * The array is populated as tool implementations are added in later phases.
  */
 export const RDBMS_TOOLS: RdbmsToolDef[] = [
-  // Phase 2: Connection tools
-  // ...CONNECTION_TOOLS,
+  // Phase 2: Connection tools (3)
+  ...CONNECTION_TOOLS,
 
-  // Phase 2: Schema tools
-  // ...SCHEMA_TOOLS,
+  // Phase 2: Schema tools (3)
+  ...SCHEMA_TOOLS,
 
   // Phase 5: Mapping tools
   // ...MAPPING_TOOLS,
