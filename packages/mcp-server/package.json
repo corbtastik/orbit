@@ -26,9 +26,14 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@orbit/core": "1.0.0",
-    "mongodb": "^7.1.0"
+    "better-sqlite3": "^12.6.2",
+    "mongodb": "^7.1.0",
+    "oracledb": "^6.10.0",
+    "pg": "^8.18.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.0"
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.0",
+    "@types/pg": "^8.16.0"
   }
 }
