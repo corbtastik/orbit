@@ -29,6 +29,8 @@ export type {
 
 // Driver exports
 export { PostgresDriver, PG_TYPE_MAP, mapPostgresTypeToBson } from "./drivers/index.js";
+export { MssqlDriver, MSSQL_TYPE_MAP, mapMssqlTypeToBson } from "./drivers/index.js";
+export { SqliteDriver, SQLITE_TYPE_MAP, mapSqliteTypeToBson } from "./drivers/index.js";
 
 // Core types
 export type {
@@ -44,12 +46,38 @@ export type {
   PatternRecommendation,
 } from "./types.js";
 
+// Mapping store
+export { MappingStore } from "./mapping-store.js";
+export type { ValidationResult, ValidationCheck } from "./mapping-store.js";
+
+// Migration engine
+export { MigrationExecutor, DocumentTransformer } from "./migration/index.js";
+export type {
+  MigrationOptions,
+  MigrationProgress,
+  MigrationResult,
+  MigrationError,
+  MigrationEstimate,
+  VerificationResult,
+  BatchMigrationResult,
+} from "./migration/index.js";
+
+// Generators
+export { IndexGenerator, ValidationGenerator } from "./generators/index.js";
+export type {
+  IndexRecommendation,
+  IndexGenerationResult,
+  JsonSchemaProperty,
+  ValidationSchema,
+  ValidationGenerationResult,
+} from "./generators/index.js";
+
 // Tool imports
 import { CONNECTION_TOOLS } from "./connection-tools.js";
 import { SCHEMA_TOOLS } from "./schema-tools.js";
-// import { MAPPING_TOOLS } from "./mapping-tools.js";
-// import { MIGRATION_TOOLS } from "./migration-tools.js";
-// import { UTILITY_TOOLS } from "./utility-tools.js";
+import { MAPPING_TOOLS } from "./mapping-tools.js";
+import { MIGRATION_TOOLS } from "./migration-tools.js";
+import { UTILITY_TOOLS } from "./utility-tools.js";
 
 import type { RdbmsToolDef } from "./types.js";
 
@@ -59,18 +87,18 @@ import type { RdbmsToolDef } from "./types.js";
  * Tools are registered with the MCP server and exposed to LLM clients.
  */
 export const RDBMS_TOOLS: RdbmsToolDef[] = [
-  // Phase 2: Connection tools (3)
+  // Connection tools (3)
   ...CONNECTION_TOOLS,
 
-  // Phase 2: Schema tools (3)
+  // Schema tools (3)
   ...SCHEMA_TOOLS,
 
-  // Phase 5: Mapping tools
-  // ...MAPPING_TOOLS,
+  // Mapping tools (6)
+  ...MAPPING_TOOLS,
 
-  // Phase 6: Migration tools
-  // ...MIGRATION_TOOLS,
+  // Migration tools (4)
+  ...MIGRATION_TOOLS,
 
-  // Phase 6: Utility tools
-  // ...UTILITY_TOOLS,
+  // Utility tools (4)
+  ...UTILITY_TOOLS,
 ];

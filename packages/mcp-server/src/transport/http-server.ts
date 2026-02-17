@@ -90,7 +90,12 @@ export function createHttpServer(options: HttpServerOptions): HttpServerResult {
       sessionIdGenerator: () => sessionId,
     });
 
-    const server = createMcpServer(atlasClient, session.connectionManager, { readOnly });
+    const server = createMcpServer(
+      atlasClient,
+      session.connectionManager,
+      session.rdbmsConnectionManager,
+      { readOnly },
+    );
 
     // Store for reuse
     transports.set(sessionId, transport);

@@ -9,7 +9,7 @@ import {
   CONFIG_FILE,
   type ResolvedOrbitConfig,
 } from "@orbit/core";
-import { ConnectionManager } from "./tools/index.js";
+import { ConnectionManager, RdbmsConnectionManager } from "./tools/index.js";
 import { createServer } from "./server.js";
 import { createHttpServer } from "./transport/index.js";
 
@@ -108,6 +108,7 @@ async function runStdioMode(config: ResolvedOrbitConfig): Promise<void> {
   });
 
   const conn = new ConnectionManager();
+  const rdbmsConn = new RdbmsConnectionManager();
 
   // Register named connections from config
   registerConnections(conn, config);
@@ -117,13 +118,16 @@ async function runStdioMode(config: ResolvedOrbitConfig): Promise<void> {
     await conn.connect(config.mongodb.default);
   }
 
-  const server = createServer(client, conn, { readOnly: config.server.readOnly });
+  const server = createServer(client, conn, rdbmsConn, { readOnly: config.server.readOnly });
   const transport = new StdioServerTransport();
 
   await server.connect(transport);
 
   const shutdown = async () => {
-    await conn.disconnectAll();
+    await Promise.all([
+      conn.disconnectAll(),
+      rdbmsConn.disconnectAll(),
+    ]);
     await server.close();
     process.exit(0);
   };

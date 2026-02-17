@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { AtlasClient } from "@orbit/core";
-import { ConnectionManager } from "./tools/index.js";
+import { ConnectionManager, RdbmsConnectionManager } from "./tools/index.js";
 import { createServer } from "./server.js";
 
 describe("createServer", () => {
@@ -18,10 +18,19 @@ describe("createServer", () => {
     expect(server).toBeDefined();
   });
 
+  it("returns a Server instance with all connection managers", () => {
+    const mockClient = {} as AtlasClient;
+    const conn = new ConnectionManager();
+    const rdbmsConn = new RdbmsConnectionManager();
+    const server = createServer(mockClient, conn, rdbmsConn);
+    expect(server).toBeDefined();
+  });
+
   it("returns a Server instance with readOnly option", () => {
     const mockClient = {} as AtlasClient;
     const conn = new ConnectionManager();
-    const server = createServer(mockClient, conn, { readOnly: true });
+    const rdbmsConn = new RdbmsConnectionManager();
+    const server = createServer(mockClient, conn, rdbmsConn, { readOnly: true });
     expect(server).toBeDefined();
   });
 });

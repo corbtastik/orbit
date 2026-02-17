@@ -28,10 +28,10 @@ const connectRdbmsTool: RdbmsToolDef = {
       },
       type: {
         type: "string",
-        enum: ["postgres", "oracle", "sqlite", "mysql", "mssql"],
+        enum: ["postgres", "mssql", "sqlite", "oracle", "mysql"],
         description:
-          "Database type. Currently supported: postgres. " +
-          "Coming soon: oracle (Phase 4), sqlite (Phase 3).",
+          "Database type. Currently supported: postgres, mssql (SQL Server), sqlite. " +
+          "Coming soon: oracle, mysql.",
       },
       connectionString: {
         type: "string",

@@ -1,17 +1,20 @@
 /**
- * SessionManager — provides per-session ConnectionManager isolation for HTTP transport.
+ * SessionManager — provides per-session connection isolation for HTTP transport.
  *
- * Each MCP session (identified by session ID) gets its own ConnectionManager,
- * ensuring isolated MongoDB connections between clients. Sessions are automatically
- * cleaned up after idle timeout.
+ * Each MCP session (identified by session ID) gets its own ConnectionManager
+ * and RdbmsConnectionManager, ensuring isolated database connections between
+ * clients. Sessions are automatically cleaned up after idle timeout.
  */
 
-import { ConnectionManager } from "../tools/index.js";
+import { ConnectionManager, RdbmsConnectionManager } from "../tools/index.js";
 
 /** Context for a single session. */
 export interface SessionContext {
   sessionId: string;
+  /** MongoDB connection manager. */
   connectionManager: ConnectionManager;
+  /** RDBMS connection manager (for migration tools). */
+  rdbmsConnectionManager: RdbmsConnectionManager;
   createdAt: Date;
   lastActivity: Date;
 }
@@ -46,7 +49,7 @@ export class SessionManager {
    * Get or create a session context for the given session ID.
    *
    * If the session exists, updates its lastActivity timestamp.
-   * If not, creates a new session with a fresh ConnectionManager.
+   * If not, creates a new session with fresh connection managers.
    */
   getOrCreate(sessionId: string): SessionContext {
     let session = this.sessions.get(sessionId);
@@ -57,10 +60,11 @@ export class SessionManager {
       return session;
     }
 
-    // Create new session
+    // Create new session with both connection managers
     session = {
       sessionId,
       connectionManager: new ConnectionManager(),
+      rdbmsConnectionManager: new RdbmsConnectionManager(),
       createdAt: new Date(),
       lastActivity: new Date(),
     };
@@ -84,12 +88,15 @@ export class SessionManager {
   }
 
   /**
-   * Destroy a specific session, closing all its MongoDB connections.
+   * Destroy a specific session, closing all its database connections.
    */
   async destroy(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session) {
-      await session.connectionManager.disconnectAll();
+      await Promise.all([
+        session.connectionManager.disconnectAll(),
+        session.rdbmsConnectionManager.disconnectAll(),
+      ]);
       this.sessions.delete(sessionId);
     }
   }
@@ -103,6 +110,7 @@ export class SessionManager {
     const destroyPromises: Promise<void>[] = [];
     for (const session of this.sessions.values()) {
       destroyPromises.push(session.connectionManager.disconnectAll());
+      destroyPromises.push(session.rdbmsConnectionManager.disconnectAll());
     }
     await Promise.all(destroyPromises);
     this.sessions.clear();

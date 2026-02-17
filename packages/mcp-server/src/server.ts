@@ -14,9 +14,10 @@ import {
   TOOL_REGISTRY,
   buildToolSchema,
   DATABASE_TOOLS,
+  RDBMS_TOOLS,
 } from "./tools/index.js";
-import type { DatabaseToolDef } from "./tools/index.js";
-import type { ConnectionManager } from "./tools/index.js";
+import type { DatabaseToolDef, RdbmsToolDef } from "./tools/index.js";
+import type { ConnectionManager, RdbmsConnectionManager } from "./tools/index.js";
 import {
   RESOURCE_REGISTRY,
   extractVariables,
@@ -34,13 +35,14 @@ export interface ServerOptions {
 /**
  * Create and configure the OrbitAI MCP server.
  *
- * Supports two tool systems:
+ * Supports three tool systems:
  *   1. Atlas Admin API tools — routed through dispatch() and ActionMaps
  *   2. Database tools — routed through the MongoDB driver via ConnectionManager
+ *   3. RDBMS tools — routed through RdbmsConnectionManager for migration workflows
  *
- * The ConnectionManager is optional. If omitted (or no connection is active),
- * database tools return a clear "not connected" error. Connection tools are
- * always available so the LLM can establish a connection at runtime.
+ * The ConnectionManager and RdbmsConnectionManager are optional. If omitted
+ * (or no connection is active), tools return a clear "not connected" error.
+ * Connection tools are always available so the LLM can establish connections at runtime.
  *
  * Multi-connection support: Tools can specify a `connection` parameter to
  * target a specific named connection. If not specified, uses the default
@@ -49,6 +51,7 @@ export interface ServerOptions {
 export function createServer(
   client: AtlasClient,
   conn?: ConnectionManager,
+  rdbmsConn?: RdbmsConnectionManager,
   options: ServerOptions = {},
 ): Server {
   const server = new Server(
@@ -60,20 +63,21 @@ export function createServer(
         prompts: {},
       },
       instructions:
-        "OrbitAI MCP Server — provides 100% coverage of the MongoDB Atlas Admin API v2 " +
-        "and direct MongoDB database operations. " +
+        "OrbitAI MCP Server — provides 100% coverage of the MongoDB Atlas Admin API v2, " +
+        "direct MongoDB database operations, and RDBMS-to-MongoDB migration tools. " +
         "Use Atlas tools (manage_*) for infrastructure: clusters, security, backups, monitoring. " +
         "Use database tools (find, aggregate, insert-many, etc.) for querying and managing data. " +
+        "Use RDBMS tools (connect-rdbms, introspect-schema, etc.) for migrating from PostgreSQL, SQL Server, or SQLite. " +
         "Use the connect tool to establish a MongoDB connection before running database operations. " +
-        "Use list-connections to see available connections. " +
-        "Specify a connection parameter on database tools to target a specific named connection. " +
+        "Use connect-rdbms to establish source database connections for migration workflows. " +
+        "Use list-connections to see available MongoDB connections. Use list-rdbms to see RDBMS connections. " +
         "Use resources for quick read-only snapshots. Use prompts for guided multi-step workflows.",
     },
   );
 
   const readOnly = options.readOnly ?? false;
 
-  registerTools(server, client, conn, readOnly);
+  registerTools(server, client, conn, rdbmsConn, readOnly);
   registerResources(server, client, conn);
   registerPrompts(server);
 
@@ -88,6 +92,7 @@ function registerTools(
   server: Server,
   client: AtlasClient,
   conn: ConnectionManager | undefined,
+  rdbmsConn: RdbmsConnectionManager | undefined,
   readOnly: boolean,
 ): void {
   // --- Atlas Admin API tool index ---
@@ -111,7 +116,14 @@ function registerTools(
     dbToolIndex.set(def.name, def);
   }
 
-  // tools/list — return Atlas tools + database tools in a single list
+  // --- RDBMS tool index ---
+  const rdbmsToolIndex = new Map<string, RdbmsToolDef>();
+
+  for (const def of RDBMS_TOOLS) {
+    rdbmsToolIndex.set(def.name, def);
+  }
+
+  // tools/list — return Atlas tools + database tools + RDBMS tools
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       // Atlas Admin API tools
@@ -129,10 +141,16 @@ function registerTools(
         description: def.description,
         inputSchema: def.inputSchema,
       })),
+      // RDBMS migration tools
+      ...RDBMS_TOOLS.map((def) => ({
+        name: def.name,
+        description: def.description,
+        inputSchema: def.inputSchema,
+      })),
     ],
   }));
 
-  // tools/call — route to database tools or Atlas tools
+  // tools/call — route to database tools, RDBMS tools, or Atlas tools
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name } = request.params;
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
@@ -141,6 +159,12 @@ function registerTools(
     const dbTool = dbToolIndex.get(name);
     if (dbTool) {
       return handleDatabaseTool(dbTool, conn, args, readOnly);
+    }
+
+    // --- Check RDBMS tools ---
+    const rdbmsTool = rdbmsToolIndex.get(name);
+    if (rdbmsTool) {
+      return handleRdbmsTool(rdbmsTool, rdbmsConn, conn, args, readOnly);
     }
 
     // --- Fall through to Atlas Admin API tools ---
@@ -270,6 +294,99 @@ async function handleDatabaseTool(
     const message = err instanceof Error ? err.message : String(err);
     return errorResult(message);
   }
+}
+
+/**
+ * Handle an RDBMS tool call with connection and access checks.
+ *
+ * RDBMS tools receive both the RDBMS connection manager (source databases)
+ * and MongoDB connection manager (target database for migrations).
+ */
+async function handleRdbmsTool(
+  tool: RdbmsToolDef,
+  rdbmsConn: RdbmsConnectionManager | undefined,
+  mongoConn: ConnectionManager | undefined,
+  args: Record<string, unknown>,
+  readOnly: boolean,
+) {
+  // Write operations are blocked in read-only mode
+  if (tool.operationType === "write" && readOnly) {
+    return errorResult(
+      "Write operations are disabled in read-only mode.",
+    );
+  }
+
+  // RdbmsConnectionManager must exist (even for connection tools)
+  if (!rdbmsConn) {
+    return errorResult(
+      "RDBMS support is not configured. RdbmsConnectionManager is not available.",
+    );
+  }
+
+  // MongoDB connection manager is required for migration operations
+  // but not for connection/read operations
+  if (!mongoConn && tool.operationType === "write") {
+    return errorResult(
+      "MongoDB connection is required for migration operations. " +
+      "Configure a MongoDB connection first.",
+    );
+  }
+
+  // Extract RDBMS connection name from args
+  const connectionName = args.connection as string | undefined;
+
+  // Non-connection tools require an active RDBMS connection
+  if (tool.operationType !== "connection") {
+    if (connectionName) {
+      // Named connection requested — validate it exists and is connected
+      if (!rdbmsConn.hasConnection(connectionName)) {
+        return errorResult(
+          `RDBMS connection "${connectionName}" not found. Use list-rdbms to see available connections.`,
+        );
+      }
+      if (!rdbmsConn.isConnected(connectionName)) {
+        return errorResult(
+          `RDBMS connection "${connectionName}" is not connected. Use connect-rdbms first.`,
+        );
+      }
+    } else {
+      // No connection specified — require default connection
+      const defaultName = rdbmsConn.getDefaultName();
+      if (!defaultName || !rdbmsConn.isConnected(defaultName)) {
+        return errorResult(
+          "Not connected to any RDBMS. Use connect-rdbms first, or specify a connection parameter.",
+        );
+      }
+    }
+  }
+
+  try {
+    // Provide a stub ConnectionManager if not available (for non-write operations)
+    const mongoConnForTool = mongoConn ?? createStubConnectionManager();
+
+    const result = await tool.execute(rdbmsConn, mongoConnForTool, args);
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return errorResult(message);
+  }
+}
+
+/**
+ * Create a stub ConnectionManager for RDBMS tools that don't need MongoDB.
+ * This avoids null checks in tools that only do schema introspection.
+ */
+function createStubConnectionManager(): ConnectionManager {
+  // Import dynamically to avoid circular dependency issues
+  const { ConnectionManager } = require("./tools/index.js");
+  return new ConnectionManager();
 }
 
 // ---------------------------------------------------------------------------
