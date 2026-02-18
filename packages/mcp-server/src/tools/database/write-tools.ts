@@ -15,6 +15,62 @@ import type { DatabaseToolDef } from "./types.js";
 /** Maximum number of documents that can be inserted in a single call. */
 const MAX_INSERT_BATCH = 1000;
 
+/**
+ * ISO date string patterns.
+ *
+ * Matches:
+ * - YYYY-MM-DD (date only)
+ * - YYYY-MM-DDTHH:mm:ss (datetime)
+ * - YYYY-MM-DDTHH:mm:ssZ (datetime with Z)
+ * - YYYY-MM-DDTHH:mm:ss.sssZ (datetime with milliseconds)
+ * - YYYY-MM-DDTHH:mm:ss+00:00 (datetime with timezone offset)
+ */
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?(Z|[+-]\d{2}:\d{2})?)?$/;
+
+/**
+ * Check if a string is a valid ISO date.
+ */
+function isIsoDateString(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  if (!ISO_DATE_REGEX.test(value)) return false;
+
+  // Validate it's actually a valid date
+  const date = new Date(value);
+  return !isNaN(date.getTime());
+}
+
+/**
+ * Recursively convert ISO date strings to Date objects in a document.
+ *
+ * Handles nested objects and arrays.
+ */
+function convertDates<T>(value: T): T {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  // Check for ISO date string
+  if (isIsoDateString(value)) {
+    return new Date(value) as T;
+  }
+
+  // Handle arrays
+  if (Array.isArray(value)) {
+    return value.map(convertDates) as T;
+  }
+
+  // Handle objects (but not Date instances)
+  if (typeof value === "object" && !(value instanceof Date)) {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = convertDates(val);
+    }
+    return result as T;
+  }
+
+  return value;
+}
+
 /** Connection parameter schema shared by all tools. */
 const connectionProperty = {
   connection: {
@@ -34,6 +90,7 @@ const insertManyTool: DatabaseToolDef = {
   description:
     "Insert one or more documents into a collection. " +
     `Accepts up to ${MAX_INSERT_BATCH} documents per call. ` +
+    "Automatically converts ISO date strings (YYYY-MM-DD, YYYY-MM-DDTHH:mm:ssZ) to Date objects. " +
     "Returns the inserted document IDs.",
   operationType: "write",
   inputSchema: {
@@ -52,8 +109,14 @@ const insertManyTool: DatabaseToolDef = {
         type: "array",
         description:
           "Array of documents to insert. " +
-          'Example: [{ "name": "Alice", "age": 30 }, { "name": "Bob", "age": 25 }]',
+          'Example: [{ "name": "Alice", "age": 30 }, { "name": "Bob", "age": 25 }]. ' +
+          "ISO date strings are automatically converted to Date objects.",
         items: { type: "object" },
+      },
+      skipDateConversion: {
+        type: "boolean",
+        description:
+          "Skip automatic ISO date string conversion. Default: false (dates are converted).",
       },
     },
     required: ["database", "collection", "documents"],
@@ -63,13 +126,19 @@ const insertManyTool: DatabaseToolDef = {
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
-    const documents = args.documents as Record<string, unknown>[];
+    const rawDocuments = args.documents as Record<string, unknown>[];
+    const skipDateConversion = args.skipDateConversion as boolean | undefined;
 
-    if (documents.length > MAX_INSERT_BATCH) {
+    if (rawDocuments.length > MAX_INSERT_BATCH) {
       throw new Error(
-        `Too many documents: ${documents.length}. Maximum is ${MAX_INSERT_BATCH} per call.`,
+        `Too many documents: ${rawDocuments.length}. Maximum is ${MAX_INSERT_BATCH} per call.`,
       );
     }
+
+    // Convert ISO date strings to Date objects unless skipped
+    const documents = skipDateConversion
+      ? rawDocuments
+      : rawDocuments.map(convertDates);
 
     const result = await coll.insertMany(documents);
 
@@ -77,6 +146,7 @@ const insertManyTool: DatabaseToolDef = {
       ok: true,
       insertedCount: result.insertedCount,
       insertedIds: result.insertedIds,
+      datesConverted: !skipDateConversion,
     };
   },
 };

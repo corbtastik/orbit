@@ -501,6 +501,89 @@ describe("write tool execution", () => {
     ).rejects.toThrow("Too many documents");
   });
 
+  it("insert-many converts ISO date strings to Date objects", async () => {
+    const tool = DATABASE_TOOLS.find((t) => t.name === "insert-many")!;
+    const docs = [
+      { name: "Alice", birthDate: "1990-05-15" },
+      { name: "Bob", createdAt: "2024-01-15T10:30:00Z" },
+    ];
+    await tool.execute(conn, {
+      database: "test",
+      collection: "users",
+      documents: docs,
+    });
+
+    // Check that insertMany was called with Date objects
+    const calledDocs = conn._coll.insertMany.mock.calls[0][0];
+    expect(calledDocs[0].birthDate).toBeInstanceOf(Date);
+    expect(calledDocs[0].birthDate.toISOString()).toBe("1990-05-15T00:00:00.000Z");
+    expect(calledDocs[1].createdAt).toBeInstanceOf(Date);
+    expect(calledDocs[1].createdAt.toISOString()).toBe("2024-01-15T10:30:00.000Z");
+  });
+
+  it("insert-many converts nested date strings", async () => {
+    const tool = DATABASE_TOOLS.find((t) => t.name === "insert-many")!;
+    const docs = [
+      {
+        name: "Order",
+        metadata: {
+          createdAt: "2024-01-15",
+          updatedAt: "2024-02-20T15:00:00Z",
+        },
+        items: [
+          { name: "Item 1", addedAt: "2024-01-16" },
+        ],
+      },
+    ];
+    await tool.execute(conn, {
+      database: "test",
+      collection: "orders",
+      documents: docs,
+    });
+
+    const calledDocs = conn._coll.insertMany.mock.calls[0][0];
+    expect(calledDocs[0].metadata.createdAt).toBeInstanceOf(Date);
+    expect(calledDocs[0].metadata.updatedAt).toBeInstanceOf(Date);
+    expect(calledDocs[0].items[0].addedAt).toBeInstanceOf(Date);
+  });
+
+  it("insert-many skips date conversion when skipDateConversion is true", async () => {
+    const tool = DATABASE_TOOLS.find((t) => t.name === "insert-many")!;
+    const docs = [{ name: "Alice", birthDate: "1990-05-15" }];
+    await tool.execute(conn, {
+      database: "test",
+      collection: "users",
+      documents: docs,
+      skipDateConversion: true,
+    });
+
+    const calledDocs = conn._coll.insertMany.mock.calls[0][0];
+    expect(calledDocs[0].birthDate).toBe("1990-05-15");
+    expect(typeof calledDocs[0].birthDate).toBe("string");
+  });
+
+  it("insert-many does not convert non-date strings", async () => {
+    const tool = DATABASE_TOOLS.find((t) => t.name === "insert-many")!;
+    const docs = [
+      {
+        name: "Alice Smith",
+        email: "alice@example.com",
+        phone: "555-1234",
+        notes: "Meeting on 2024-01-15 was good", // Contains date-like text but not ISO format
+      },
+    ];
+    await tool.execute(conn, {
+      database: "test",
+      collection: "users",
+      documents: docs,
+    });
+
+    const calledDocs = conn._coll.insertMany.mock.calls[0][0];
+    expect(typeof calledDocs[0].name).toBe("string");
+    expect(typeof calledDocs[0].email).toBe("string");
+    expect(typeof calledDocs[0].notes).toBe("string");
+  });
+
   it("create-index creates an index", async () => {
     const tool = DATABASE_TOOLS.find((t) => t.name === "create-index")!;
     const result = (await tool.execute(conn, {
