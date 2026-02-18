@@ -132,18 +132,3 @@ export async function createTransport(options: TransportOptions = {}): Promise<T
   // Fall back to stdio
   return createStdioTransport(options);
 }
-
-/**
- * Create HTTP transport without fallback.
- */
-export function createHttpTransportOnly(url?: string): TransportResult {
-  const httpUrl = url ?? process.env.ORBIT_MCP_URL ?? DEFAULTS.httpUrl;
-  return createHttpTransport(httpUrl);
-}
-
-/**
- * Create stdio transport without HTTP attempt.
- */
-export function createStdioTransportOnly(options: TransportOptions = {}): TransportResult {
-  return createStdioTransport(options);
-}

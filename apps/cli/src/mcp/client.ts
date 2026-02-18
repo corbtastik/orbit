@@ -211,27 +211,9 @@ export class McpClientWrapper {
   }
 
   /**
-   * Get server instructions (if available).
-   */
-  getServerInstructions(): string | undefined {
-    return this.client?.getInstructions();
-  }
-
-  /**
    * Get server version info.
    */
   getServerVersion(): { name: string; version: string } | undefined {
     return this.client?.getServerVersion();
   }
-}
-
-/**
- * Create and connect an MCP client.
- *
- * Convenience function for one-liner setup.
- */
-export async function createMcpClient(options?: McpClientOptions): Promise<McpClientWrapper> {
-  const client = new McpClientWrapper(options);
-  await client.connect();
-  return client;
 }

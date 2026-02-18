@@ -10,7 +10,6 @@ export {
 } from "./renderer.js";
 export { printBanner } from "./banner.js";
 export { Prompt } from "./prompt.js";
-export { InputBuffer } from "./input-buffer.js";
 export { Session } from "./session.js";
 export { ScreenManager } from "./screen.js";
 export type { StatusBarContent, ScreenState } from "./screen.js";
