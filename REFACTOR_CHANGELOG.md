@@ -3,8 +3,10 @@
 Track progress on codebase improvements identified during code review.
 
 **Started:** 2024-02-18
+**Completed:** 2024-02-18 (Phases 1-5)
 **Baseline:** 21,455 lines of TypeScript
-**Current:** 21,104 lines of TypeScript
+**Final:** 21,104 lines of TypeScript
+**Net Reduction:** 351 lines (-1.6%)
 
 ---
 
@@ -17,39 +19,42 @@ Track progress on codebase improvements identified during code review.
 | 3 | Consolidate Constants & Types | **Complete** | +19 lines (reorg) |
 | 4 | Split Large Files | **Complete** | +74 lines (reorg) |
 | 5 | Fix Inconsistencies | **Complete** | +9 lines |
-| 5 | Fix Inconsistencies | Pending | - |
-| 6 | Refactor Complex Classes | Pending | - |
+| 6 | Refactor Complex Classes | **Deferred** | — |
+
+**Total: -431 lines removed, +102 lines added (reorganization) = -329 net lines**
 
 ---
 
-## Phase 6: Refactor Complex Classes
+## Deferred Work
 
+### Phase 6: Refactor Complex Classes
+
+**Status:** Deferred — Optional future improvements
 **Risk:** Medium-High
-**Goal:** Reduce class complexity and improve testability.
+**Reason:** These are larger architectural changes that require careful testing and provide diminishing returns compared to Phases 1-5.
 
-### Tasks
+#### Tasks (for future consideration)
 
-- [ ] **6.1** Refactor `ScreenManager` (431 lines) — Optional/Future
+- **6.1** Refactor `ScreenManager` (431 lines)
   - Extract ora proxy to `OraScreenAdapter`
   - Extract zone management to `TerminalZones`
   - Keep `ScreenManager` as coordinator
   - Requires careful testing of terminal rendering
 
-- [ ] **6.2** Refactor `AtlasClient` request method — Optional/Future
+- **6.2** Refactor `AtlasClient` request method
   - Extract retry logic to separate function
   - Improve error context preservation
   - Add request logging option
 
-- [ ] **6.3** Consider ActionMap code generation — Optional/Future
+- **6.3** Consider ActionMap code generation
   - Generate 41 ActionMaps from metadata specification
   - Would eliminate ~700 lines of repetitive declarations
   - Requires build tooling changes
 
-### Verification
-- [ ] `npm run build` passes
-- [ ] `npm run test` passes
-- [ ] Terminal UI works correctly
-- [ ] Atlas API calls work correctly
+#### Other deferred items from Phase 4 and 5
+
+- **4.3** Split `screen.ts` (431 lines) — evaluate if worthwhile
+- **5.3** Standardize provider constructor signatures — consider options object pattern
 
 ---
 
