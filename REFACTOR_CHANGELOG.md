@@ -4,7 +4,7 @@ Track progress on codebase improvements identified during code review.
 
 **Started:** 2024-02-18
 **Baseline:** 21,455 lines of TypeScript
-**Current:** 21,002 lines of TypeScript
+**Current:** 21,021 lines of TypeScript
 
 ---
 
@@ -14,39 +14,10 @@ Track progress on codebase improvements identified during code review.
 |-------|------|--------|---------------|
 | 1 | Dead Code Removal | **Complete** | -420 lines |
 | 2 | Extract Shared Utilities | **Complete** | -113 lines |
-| 3 | Consolidate Constants & Types | Pending | - |
+| 3 | Consolidate Constants & Types | **Complete** | +19 lines (reorg) |
 | 4 | Split Large Files | Pending | - |
 | 5 | Fix Inconsistencies | Pending | - |
 | 6 | Refactor Complex Classes | Pending | - |
-
----
-
-## Phase 3: Consolidate Constants & Types
-
-**Risk:** Low
-**Goal:** Centralize magic constants and reduce type duplication.
-
-### Tasks
-
-- [ ] **3.1** Create `packages/mcp-server/src/tools/constants.ts`
-  - Move `MAX_FIND_LIMIT` from `read-tools.ts`
-  - Move `MAX_AGGREGATE_LIMIT` from `read-tools.ts`
-  - Move `MAX_INSERT_BATCH` from `write-tools.ts`
-  - Move `ISO_DATE_REGEX` from `write-tools.ts`
-
-- [ ] **3.2** Create generic `ToolDef<TConn>` base interface
-  - In `packages/mcp-server/src/tools/types.ts`
-  - Have `DatabaseToolDef` and `RdbmsToolDef` extend it
-  - Reduces duplicate interface definitions
-
-- [ ] **3.3** Consolidate RDBMS type exports
-  - Review exports in `packages/mcp-server/src/tools/rdbms/index.ts`
-  - Remove driver-internal exports not needed by consumers (e.g., `PG_TYPE_MAP`)
-
-### Verification
-- [ ] `npm run build` passes
-- [ ] `npm run test` passes
-- [ ] Type checking passes with no new errors
 
 ---
 
@@ -184,6 +155,32 @@ Track progress on codebase improvements identified during code review.
 - `mapping-tools.ts`, `migration-tools.ts`, `utility-tools.ts` — use shared `getMappingStore()`
 - `screen.ts`, `command-palette.ts` — use shared ANSI helpers
 - `read-tools.ts`, `write-tools.ts`, `delete-tools.ts`, `update-tools.ts`, `metadata-tools.ts` — use shared `connectionProperty`
+
+**Verification:**
+- ✓ `npm run build` passes
+- ✓ `npm run test` passes (353 tests)
+
+---
+
+### Phase 3: Consolidate Constants & Types ✓
+
+**Completed:** 2024-02-18
+**Lines Changed:** +19 (reorganization for maintainability)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 3.1 | Create `packages/mcp-server/src/tools/database/constants.ts` with shared limits and date functions | ✓ |
+| 3.2 | Create `packages/mcp-server/src/tools/types.ts` with `BaseToolDef` interface | ✓ |
+| 3.3 | Remove driver-internal exports (`PG_TYPE_MAP`, etc.) from RDBMS barrel export | ✓ |
+
+**New files:**
+- `packages/mcp-server/src/tools/database/constants.ts` — `MAX_FIND_LIMIT`, `MAX_AGGREGATE_LIMIT`, `MAX_INSERT_BATCH`, `ISO_DATE_REGEX`, `convertDates()`
+- `packages/mcp-server/src/tools/types.ts` — `BaseToolDef` interface
+
+**Files updated:**
+- `read-tools.ts`, `write-tools.ts` — import from constants.ts
+- `database/types.ts`, `rdbms/types.ts` — extend `BaseToolDef`
+- `rdbms/index.ts` — removed internal type map exports
 
 **Verification:**
 - ✓ `npm run build` passes

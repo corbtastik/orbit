@@ -5,6 +5,7 @@
  * used throughout the RDBMS migration system.
  */
 
+import type { BaseToolDef } from "../types.js";
 import type { RdbmsConnectionManager } from "./connection.js";
 import type { ConnectionManager } from "../database/connection.js";
 
@@ -27,18 +28,9 @@ export type RdbmsOperationType = "connection" | "read" | "write";
  * - rdbms: Source relational database connection
  * - mongo: Target MongoDB connection (for migration operations)
  */
-export interface RdbmsToolDef {
-  /** Tool name (e.g., "connect-rdbms", "introspect-schema"). */
-  name: string;
-
-  /** Human-readable description for the LLM. */
-  description: string;
-
+export interface RdbmsToolDef extends BaseToolDef {
   /** Access control classification. */
   operationType: RdbmsOperationType;
-
-  /** JSON Schema for tool parameters. */
-  inputSchema: object;
 
   /**
    * Execute the tool.

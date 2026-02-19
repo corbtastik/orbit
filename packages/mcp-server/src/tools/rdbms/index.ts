@@ -16,7 +16,7 @@
 export { RdbmsConnectionManager } from "./connection.js";
 export type { RdbmsConnectionStatus } from "./connection.js";
 
-// Driver types
+// Driver types (public API)
 export type {
   RdbmsDriver,
   RdbmsType,
@@ -27,10 +27,8 @@ export type {
   StreamRowsOptions,
 } from "./drivers/index.js";
 
-// Driver exports
-export { PostgresDriver, PG_TYPE_MAP, mapPostgresTypeToBson } from "./drivers/index.js";
-export { MssqlDriver, MSSQL_TYPE_MAP, mapMssqlTypeToBson } from "./drivers/index.js";
-export { SqliteDriver, SQLITE_TYPE_MAP, mapSqliteTypeToBson } from "./drivers/index.js";
+// Driver classes (public API - type maps are internal)
+export { PostgresDriver, MssqlDriver, SqliteDriver } from "./drivers/index.js";
 
 // Core types
 export type {

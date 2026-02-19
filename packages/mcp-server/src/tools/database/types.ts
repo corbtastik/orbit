@@ -7,6 +7,7 @@
  * operation — find needs filter/projection/sort, aggregate needs pipeline, etc.
  */
 
+import type { BaseToolDef } from "../types.js";
 import type { ConnectionManager } from "./connection.js";
 
 /**
@@ -41,18 +42,9 @@ export type DatabaseOperationType = "read" | "write" | "connection";
  * receives a ConnectionManager and the tool's arguments, and returns the
  * result to be serialized as JSON in the MCP response.
  */
-export interface DatabaseToolDef {
-  /** MCP tool name (e.g., "find", "aggregate", "list-databases"). */
-  name: string;
-
-  /** Human-readable description shown to the LLM. */
-  description: string;
-
+export interface DatabaseToolDef extends BaseToolDef {
   /** Access control classification. */
   operationType: DatabaseOperationType;
-
-  /** JSON Schema specific to this tool's parameters. */
-  inputSchema: object;
 
   /** Execute the tool against a live MongoDB connection. */
   execute: (

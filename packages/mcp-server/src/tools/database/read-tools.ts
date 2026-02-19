@@ -10,13 +10,8 @@
  * uses the default connection.
  */
 
+import { MAX_FIND_LIMIT, MAX_AGGREGATE_LIMIT } from "./constants.js";
 import { connectionProperty, type DatabaseToolDef } from "./types.js";
-
-/** Maximum number of documents returned by find to prevent unbounded results. */
-const MAX_FIND_LIMIT = 100;
-
-/** Maximum number of documents returned by aggregate to prevent unbounded results. */
-const MAX_AGGREGATE_LIMIT = 1000;
 
 // ---------------------------------------------------------------------------
 // find
