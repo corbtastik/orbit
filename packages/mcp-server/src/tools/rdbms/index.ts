@@ -73,7 +73,7 @@ export type {
 // Tool imports
 import { CONNECTION_TOOLS } from "./connection-tools.js";
 import { SCHEMA_TOOLS } from "./schema-tools.js";
-import { MAPPING_TOOLS } from "./mapping-tools.js";
+import { MAPPING_TOOLS } from "./mapping-tools/index.js";
 import { MIGRATION_TOOLS } from "./migration-tools.js";
 import { UTILITY_TOOLS } from "./utility-tools.js";
 

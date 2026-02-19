@@ -4,7 +4,7 @@ Track progress on codebase improvements identified during code review.
 
 **Started:** 2024-02-18
 **Baseline:** 21,455 lines of TypeScript
-**Current:** 21,021 lines of TypeScript
+**Current:** 21,095 lines of TypeScript
 
 ---
 
@@ -15,42 +15,9 @@ Track progress on codebase improvements identified during code review.
 | 1 | Dead Code Removal | **Complete** | -420 lines |
 | 2 | Extract Shared Utilities | **Complete** | -113 lines |
 | 3 | Consolidate Constants & Types | **Complete** | +19 lines (reorg) |
-| 4 | Split Large Files | Pending | - |
+| 4 | Split Large Files | **Complete** | +74 lines (reorg) |
 | 5 | Fix Inconsistencies | Pending | - |
 | 6 | Refactor Complex Classes | Pending | - |
-
----
-
-## Phase 4: Split Large Files
-
-**Risk:** Medium
-**Goal:** Improve maintainability by splitting files >400 lines.
-
-### Tasks
-
-- [ ] **4.1** Split `mapping-tools.ts` (967 lines)
-  - `mapping-tools/create.ts` — createMappingTool
-  - `mapping-tools/update.ts` — updateMappingTool
-  - `mapping-tools/preview.ts` — previewDocumentTool
-  - `mapping-tools/validate.ts` — validateMappingTool
-  - `mapping-tools/list-delete.ts` — listMappingsTool, deleteMappingTool
-  - `mapping-tools/index.ts` — barrel export
-
-- [ ] **4.2** Extract command handling from `apps/cli/src/index.ts` (387 lines)
-  - Create `apps/cli/src/commands.ts`
-  - Move `handleCommand()` function
-  - Move `printConfig()` function
-  - Move utility functions: `mask()`, `val()`
-
-- [ ] **4.3** Split `screen.ts` (431 lines) — Optional/Future
-  - Evaluate if `OraScreenAdapter` should be separate
-  - Evaluate if `TerminalZones` abstraction is worthwhile
-
-### Verification
-- [ ] `npm run build` passes
-- [ ] `npm run test` passes
-- [ ] CLI functionality unchanged
-- [ ] All MCP tools work correctly
 
 ---
 
@@ -181,6 +148,43 @@ Track progress on codebase improvements identified during code review.
 - `read-tools.ts`, `write-tools.ts` — import from constants.ts
 - `database/types.ts`, `rdbms/types.ts` — extend `BaseToolDef`
 - `rdbms/index.ts` — removed internal type map exports
+
+**Verification:**
+- ✓ `npm run build` passes
+- ✓ `npm run test` passes (353 tests)
+
+---
+
+### Phase 4: Split Large Files ✓
+
+**Completed:** 2024-02-18
+**Lines Changed:** +74 (reorganization for maintainability)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 4.1 | Split `mapping-tools.ts` (946 lines) into `mapping-tools/` directory | ✓ |
+| 4.2 | Extract command handling from `apps/cli/src/index.ts` to `commands.ts` | ✓ |
+| 4.3 | Split `screen.ts` — Optional/Future | Skipped |
+
+**New files (Task 4.1 — mapping-tools directory):**
+- `mapping-tools/helpers.ts` (88 lines) — shared helper functions
+- `mapping-tools/create.ts` (266 lines) — createMappingTool
+- `mapping-tools/update.ts` (167 lines) — updateMappingTool
+- `mapping-tools/preview.ts` (167 lines) — previewDocumentTool
+- `mapping-tools/validate.ts` (195 lines) — validateMappingTool
+- `mapping-tools/list-delete.ts` (83 lines) — listMappingsTool, deleteMappingTool
+- `mapping-tools/index.ts` (39 lines) — barrel export
+
+**New file (Task 4.2):**
+- `apps/cli/src/commands.ts` (105 lines) — handleCommand, printConfig, mask, val
+
+**Files updated:**
+- `apps/cli/src/index.ts` — reduced from 387 to 297 lines
+- `packages/mcp-server/src/tools/rdbms/index.ts` — imports from mapping-tools/index.js
+- `mapping-tools.test.ts` — updated import path
+
+**Deleted:**
+- `packages/mcp-server/src/tools/rdbms/mapping-tools.ts` (946 lines)
 
 **Verification:**
 - ✓ `npm run build` passes

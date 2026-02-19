@@ -8,8 +8,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MappingStore } from "./mapping-store.js";
 import { SqliteDriver } from "./drivers/sqlite.js";
 import { RdbmsConnectionManager } from "./connection.js";
-import { MAPPING_TOOLS } from "./mapping-tools.js";
-import type { TableMapping, EmbedConfig, ReferenceConfig } from "./types.js";
+import { MAPPING_TOOLS } from "./mapping-tools/index.js";
+import type { RdbmsToolDef, TableMapping, EmbedConfig, ReferenceConfig } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Test utilities
@@ -464,7 +464,7 @@ describe("Mapping Tools Integration", () => {
   let driver: SqliteDriver;
 
   // Get tool by name
-  const getTool = (name: string) => MAPPING_TOOLS.find((t) => t.name === name)!;
+  const getTool = (name: string) => MAPPING_TOOLS.find((t: RdbmsToolDef) => t.name === name)!;
 
   beforeEach(async () => {
     manager = new RdbmsConnectionManager();
