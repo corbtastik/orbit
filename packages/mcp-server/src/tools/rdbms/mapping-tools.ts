@@ -13,31 +13,10 @@ import type {
   ReferenceConfig,
   MigrationPattern,
 } from "./types.js";
-import { MappingStore } from "./mapping-store.js";
 import type { ValidationResult, ValidationCheck } from "./mapping-store.js";
 import type { RdbmsConnectionManager } from "./connection.js";
 import type { ColumnInfo, ForeignKeyInfo } from "./drivers/types.js";
-
-/**
- * Extended connection manager with mapping store.
- */
-interface RdbmsConnectionManagerWithStore extends RdbmsConnectionManager {
-  _mappingStore?: MappingStore;
-}
-
-/**
- * Get or create the mapping store from the connection manager.
- * We store it as a property on the manager for session isolation.
- */
-function getMappingStore(rdbms: RdbmsConnectionManager): MappingStore {
-  const manager = rdbms as RdbmsConnectionManagerWithStore;
-
-  if (!manager._mappingStore) {
-    manager._mappingStore = new MappingStore();
-  }
-
-  return manager._mappingStore;
-}
+import { getMappingStore } from "./utils.js";
 
 /**
  * create-mapping — Create a table-to-collection mapping.

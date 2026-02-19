@@ -10,23 +10,13 @@
  * uses the default connection.
  */
 
-import type { DatabaseToolDef } from "./types.js";
+import { connectionProperty, type DatabaseToolDef } from "./types.js";
 
 /** Maximum number of documents returned by find to prevent unbounded results. */
 const MAX_FIND_LIMIT = 100;
 
 /** Maximum number of documents returned by aggregate to prevent unbounded results. */
 const MAX_AGGREGATE_LIMIT = 1000;
-
-/** Connection parameter schema shared by all tools. */
-const connectionProperty = {
-  connection: {
-    type: "string",
-    description:
-      "Named connection to use. Use list-connections to see available connections. " +
-      "If not specified, uses the default connection.",
-  },
-};
 
 // ---------------------------------------------------------------------------
 // find

@@ -1,17 +1,11 @@
 import { colors, icons } from "./theme.js";
+import { cursorTo, cursorSave, cursorRestore, eraseLine, stripAnsi } from "./ansi.js";
 
 /** A command that can appear in the palette. */
 export interface PaletteCommand {
   name: string;
   description: string;
 }
-
-// ── ANSI helpers ──────────────────────────────────────────────────────
-
-const cursorTo = (row: number, col: number) => `\x1b[${row};${col}H`;
-const cursorSave = `\x1b7`;
-const cursorRestore = `\x1b8`;
-const eraseLine = `\x1b[2K`;
 
 /**
  * Visual command palette that renders a filtered list of slash commands
@@ -173,10 +167,4 @@ export class CommandPalette {
   private clearRenderedRows(): void {
     this.clear();
   }
-}
-
-/** Strip ANSI escape codes for length calculation. */
-function stripAnsi(text: string): string {
-  // eslint-disable-next-line no-control-regex
-  return text.replace(/\x1b\[[0-9;]*m/g, "");
 }

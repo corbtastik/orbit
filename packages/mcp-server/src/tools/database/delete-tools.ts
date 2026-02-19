@@ -10,17 +10,7 @@
  * uses the default connection.
  */
 
-import type { DatabaseToolDef } from "./types.js";
-
-/** Connection parameter schema shared by all tools. */
-const connectionProperty = {
-  connection: {
-    type: "string",
-    description:
-      "Named connection to use. Use list-connections to see available connections. " +
-      "If not specified, uses the default connection.",
-  },
-};
+import { connectionProperty, type DatabaseToolDef } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // delete-many

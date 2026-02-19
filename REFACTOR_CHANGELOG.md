@@ -4,7 +4,7 @@ Track progress on codebase improvements identified during code review.
 
 **Started:** 2024-02-18
 **Baseline:** 21,455 lines of TypeScript
-**Current:** 21,035 lines of TypeScript
+**Current:** 21,002 lines of TypeScript
 
 ---
 
@@ -13,49 +13,11 @@ Track progress on codebase improvements identified during code review.
 | Phase | Name | Status | Lines Changed |
 |-------|------|--------|---------------|
 | 1 | Dead Code Removal | **Complete** | -420 lines |
-| 2 | Extract Shared Utilities | Pending | - |
+| 2 | Extract Shared Utilities | **Complete** | -113 lines |
 | 3 | Consolidate Constants & Types | Pending | - |
 | 4 | Split Large Files | Pending | - |
 | 5 | Fix Inconsistencies | Pending | - |
 | 6 | Refactor Complex Classes | Pending | - |
-
----
-
-## Phase 2: Extract Shared Utilities
-
-**Risk:** Low
-**Goal:** Eliminate code duplication by extracting shared patterns.
-
-### Tasks
-
-- [ ] **2.1** Create `packages/mcp-server/src/tools/rdbms/utils.ts`
-  - Extract `RdbmsConnectionManagerWithStore` interface
-  - Extract `getMappingStore()` function
-  - Update imports in:
-    - `mapping-tools.ts`
-    - `migration-tools.ts`
-    - `utility-tools.ts`
-
-- [ ] **2.2** Create `apps/cli/src/ui/ansi.ts`
-  - Extract `stripAnsi()` function
-  - Extract cursor constants (`cursorTo`, `cursorSave`, `cursorRestore`, `eraseLine`)
-  - Update imports in:
-    - `screen.ts`
-    - `command-palette.ts`
-
-- [ ] **2.3** Extract `connectionProperty` to `packages/mcp-server/src/tools/database/types.ts`
-  - Define once, import in all tool files
-  - Update imports in:
-    - `read-tools.ts`
-    - `write-tools.ts`
-    - `delete-tools.ts`
-    - `update-tools.ts`
-    - `metadata-tools.ts`
-
-### Verification
-- [ ] `npm run build` passes
-- [ ] `npm run test` passes
-- [ ] No functional changes to tool behavior
 
 ---
 
@@ -204,6 +166,28 @@ Track progress on codebase improvements identified during code review.
 **Verification:**
 - ✓ `npm run build` passes
 - ✓ `npm run test` passes (353 tests, down from 369)
+
+---
+
+### Phase 2: Extract Shared Utilities ✓
+
+**Completed:** 2024-02-18
+**Lines Removed:** 113 (net)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 2.1 | Create `packages/mcp-server/src/tools/rdbms/utils.ts` with `getMappingStore()` | ✓ |
+| 2.2 | Create `apps/cli/src/ui/ansi.ts` with ANSI cursor helpers and `stripAnsi()` | ✓ |
+| 2.3 | Add `connectionProperty` to `packages/mcp-server/src/tools/database/types.ts` | ✓ |
+
+**Files updated:**
+- `mapping-tools.ts`, `migration-tools.ts`, `utility-tools.ts` — use shared `getMappingStore()`
+- `screen.ts`, `command-palette.ts` — use shared ANSI helpers
+- `read-tools.ts`, `write-tools.ts`, `delete-tools.ts`, `update-tools.ts`, `metadata-tools.ts` — use shared `connectionProperty`
+
+**Verification:**
+- ✓ `npm run build` passes
+- ✓ `npm run test` passes (353 tests)
 
 ---
 

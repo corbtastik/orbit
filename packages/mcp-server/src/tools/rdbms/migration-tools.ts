@@ -6,28 +6,9 @@
 
 import type { RdbmsToolDef } from "./types.js";
 import type { ConnectionManager } from "../database/connection.js";
-import type { RdbmsConnectionManager } from "./connection.js";
-import { MappingStore } from "./mapping-store.js";
 import { MigrationExecutor } from "./migration/index.js";
 import type { MigrationOptions } from "./migration/index.js";
-
-/**
- * Extended connection manager with mapping store.
- */
-interface RdbmsConnectionManagerWithStore extends RdbmsConnectionManager {
-  _mappingStore?: MappingStore;
-}
-
-/**
- * Get the mapping store from the connection manager.
- */
-function getMappingStore(rdbms: RdbmsConnectionManager): MappingStore {
-  const manager = rdbms as RdbmsConnectionManagerWithStore;
-  if (!manager._mappingStore) {
-    manager._mappingStore = new MappingStore();
-  }
-  return manager._mappingStore;
-}
+import { getMappingStore } from "./utils.js";
 
 /**
  * estimate-migration — Estimate the scope of a migration.

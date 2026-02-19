@@ -10,7 +10,7 @@
  */
 
 import type { IndexSpecification, CreateIndexesOptions } from "mongodb";
-import type { DatabaseToolDef } from "./types.js";
+import { connectionProperty, type DatabaseToolDef } from "./types.js";
 
 /** Maximum number of documents that can be inserted in a single call. */
 const MAX_INSERT_BATCH = 1000;
@@ -70,16 +70,6 @@ function convertDates<T>(value: T): T {
 
   return value;
 }
-
-/** Connection parameter schema shared by all tools. */
-const connectionProperty = {
-  connection: {
-    type: "string",
-    description:
-      "Named connection to use. Use list-connections to see available connections. " +
-      "If not specified, uses the default connection.",
-  },
-};
 
 // ---------------------------------------------------------------------------
 // insert-many

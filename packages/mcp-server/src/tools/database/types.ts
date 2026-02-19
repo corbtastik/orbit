@@ -10,6 +10,21 @@
 import type { ConnectionManager } from "./connection.js";
 
 /**
+ * Connection parameter schema shared by all database tools.
+ *
+ * Adds optional `connection` parameter to select a named connection.
+ * Use spread syntax in tool inputSchema: `...connectionProperty`
+ */
+export const connectionProperty = {
+  connection: {
+    type: "string",
+    description:
+      "Named connection to use. Use list-connections to see available connections. " +
+      "If not specified, uses the default connection.",
+  },
+} as const;
+
+/**
  * Classifies what a database tool does for access control.
  *
  * - "read"       — queries, metadata, exports (always allowed)

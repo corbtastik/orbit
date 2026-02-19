@@ -1,5 +1,14 @@
 import { Writable } from "node:stream";
 import { colors } from "./theme.js";
+import {
+  cursorTo,
+  cursorSave,
+  cursorRestore,
+  eraseLine,
+  setScrollRegion,
+  resetScrollRegion,
+  stripAnsi,
+} from "./ansi.js";
 
 /** Content displayed in the status bar. */
 export interface StatusBarContent {
@@ -9,22 +18,6 @@ export interface StatusBarContent {
 
 /** Screen state affects what the status bar displays. */
 export type ScreenState = "idle" | "processing";
-
-// ── ANSI escape helpers ──────────────────────────────────────────────
-
-const setScrollRegion = (top: number, bottom: number) =>
-  `\x1b[${top};${bottom}r`;
-const resetScrollRegion = `\x1b[r`;
-const cursorTo = (row: number, col: number) => `\x1b[${row};${col}H`;
-const cursorSave = `\x1b7`;
-const cursorRestore = `\x1b8`;
-const eraseLine = `\x1b[2K`;
-
-/** Strip ANSI escape codes for length calculation. */
-function stripAnsi(text: string): string {
-  // eslint-disable-next-line no-control-regex
-  return text.replace(/\x1b\[[0-9;]*m/g, "");
-}
 
 /**
  * Manages a 3-zone terminal layout using ANSI scroll regions:
