@@ -62,7 +62,7 @@ const findTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
@@ -126,7 +126,7 @@ const aggregateTool: DatabaseToolDef = {
     required: ["database", "collection", "pipeline"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
@@ -181,7 +181,7 @@ const countTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
@@ -243,7 +243,7 @@ const explainTool: DatabaseToolDef = {
     required: ["database", "collection", "method"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
@@ -329,7 +329,7 @@ const exportTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);

@@ -28,7 +28,7 @@ const listDatabasesTool: DatabaseToolDef = {
     },
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const client = connectionName
       ? conn.getNamedClient(connectionName)
       : conn.getClient();
@@ -58,7 +58,7 @@ const listCollectionsTool: DatabaseToolDef = {
     required: ["database"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const db = connectionName
       ? conn.getNamedDb(connectionName, args.database as string)
       : conn.getDb(args.database as string);
@@ -91,7 +91,7 @@ const collectionIndexesTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
@@ -130,7 +130,7 @@ const collectionSchemaTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
@@ -179,7 +179,7 @@ const collectionStorageSizeTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
@@ -217,7 +217,7 @@ const dbStatsTool: DatabaseToolDef = {
     required: ["database"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const db = connectionName
       ? conn.getNamedDb(connectionName, args.database as string)
       : conn.getDb(args.database as string);
@@ -253,7 +253,7 @@ const mongodbLogsTool: DatabaseToolDef = {
     },
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const client = connectionName
       ? conn.getNamedClient(connectionName)
       : conn.getClient();

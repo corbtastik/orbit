@@ -54,7 +54,7 @@ const insertManyTool: DatabaseToolDef = {
     required: ["database", "collection", "documents"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
@@ -122,7 +122,7 @@ const createIndexTool: DatabaseToolDef = {
     required: ["database", "collection", "keys"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
@@ -168,7 +168,7 @@ const createCollectionTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const db = connectionName
       ? conn.getNamedDb(connectionName, args.database as string)
       : conn.getDb(args.database as string);
@@ -219,7 +219,7 @@ const aggregateOutTool: DatabaseToolDef = {
     required: ["database", "collection", "pipeline"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);

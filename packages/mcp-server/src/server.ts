@@ -276,12 +276,8 @@ async function handleDatabaseTool(
   }
 
   try {
-    // Pass connection name through to tool via _connectionName
-    const toolArgs = connectionName
-      ? { ...args, _connectionName: connectionName }
-      : args;
-
-    const result = await tool.execute(conn, toolArgs);
+    // Connection name is already in args.connection, no need to rename
+    const result = await tool.execute(conn, args);
     return {
       content: [
         {

@@ -45,7 +45,7 @@ const deleteManyTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
@@ -86,7 +86,7 @@ const dropCollectionTool: DatabaseToolDef = {
     required: ["database", "collection"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const db = connectionName
       ? conn.getNamedDb(connectionName, args.database as string)
       : conn.getDb(args.database as string);
@@ -125,7 +125,7 @@ const dropDatabaseTool: DatabaseToolDef = {
     required: ["database"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const db = connectionName
       ? conn.getNamedDb(connectionName, args.database as string)
       : conn.getDb(args.database as string);
@@ -172,7 +172,7 @@ const dropIndexTool: DatabaseToolDef = {
     required: ["database", "collection", "indexName"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);

@@ -4,7 +4,7 @@ Track progress on codebase improvements identified during code review.
 
 **Started:** 2024-02-18
 **Baseline:** 21,455 lines of TypeScript
-**Current:** 21,095 lines of TypeScript
+**Current:** 21,104 lines of TypeScript
 
 ---
 
@@ -16,34 +16,9 @@ Track progress on codebase improvements identified during code review.
 | 2 | Extract Shared Utilities | **Complete** | -113 lines |
 | 3 | Consolidate Constants & Types | **Complete** | +19 lines (reorg) |
 | 4 | Split Large Files | **Complete** | +74 lines (reorg) |
+| 5 | Fix Inconsistencies | **Complete** | +9 lines |
 | 5 | Fix Inconsistencies | Pending | - |
 | 6 | Refactor Complex Classes | Pending | - |
-
----
-
-## Phase 5: Fix Inconsistencies
-
-**Risk:** Low-Medium
-**Goal:** Standardize patterns across the codebase.
-
-### Tasks
-
-- [ ] **5.1** Standardize connection parameter naming
-  - Change `_connectionName` to `connection` in database tools
-  - Files: `read-tools.ts`, `write-tools.ts`, `delete-tools.ts`, `update-tools.ts`, `metadata-tools.ts`
-
-- [ ] **5.2** Fix silent config failures in `packages/core/src/config/loader.ts`
-  - Add logging or throw on JSON parse errors
-  - Distinguish between missing file vs corrupted file
-
-- [ ] **5.3** Standardize provider constructor signatures — Optional/Future
-  - Consider migrating all providers to options object pattern
-  - Lower priority; current system works
-
-### Verification
-- [ ] `npm run build` passes
-- [ ] `npm run test` passes
-- [ ] Config loading errors are now visible
 
 ---
 
@@ -185,6 +160,32 @@ Track progress on codebase improvements identified during code review.
 
 **Deleted:**
 - `packages/mcp-server/src/tools/rdbms/mapping-tools.ts` (946 lines)
+
+**Verification:**
+- ✓ `npm run build` passes
+- ✓ `npm run test` passes (353 tests)
+
+---
+
+### Phase 5: Fix Inconsistencies ✓
+
+**Completed:** 2024-02-18
+**Lines Changed:** +9
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 5.1 | Standardize `_connectionName` → `connection` in database tools | ✓ |
+| 5.2 | Fix silent config failures in `loader.ts` — warn on invalid JSON | ✓ |
+| 5.3 | Standardize provider constructor signatures — Optional/Future | Skipped |
+
+**Changes (Task 5.1):**
+- Removed `_connectionName` renaming in `server.ts` — tools now read `args.connection` directly
+- Updated `read-tools.ts`, `write-tools.ts`, `delete-tools.ts`, `update-tools.ts`, `metadata-tools.ts`
+
+**Changes (Task 5.2):**
+- `loadConfigFile()` now warns when config file exists but contains invalid JSON
+- Distinguishes between missing file (silent) vs corrupted file (warning)
+- Example output: `Warning: Config file "~/.orbit-ai/config.json" contains invalid JSON: Unexpected token...`
 
 **Verification:**
 - ✓ `npm run build` passes

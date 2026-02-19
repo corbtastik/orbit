@@ -53,7 +53,7 @@ const updateManyTool: DatabaseToolDef = {
     required: ["database", "collection", "filter", "update"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const coll = connectionName
       ? conn.getNamedCollection(connectionName, args.database as string, args.collection as string)
       : conn.getCollection(args.database as string, args.collection as string);
@@ -108,7 +108,7 @@ const renameCollectionTool: DatabaseToolDef = {
     required: ["database", "collection", "newName"],
   },
   execute: async (conn, args) => {
-    const connectionName = args._connectionName as string | undefined;
+    const connectionName = args.connection as string | undefined;
     const db = connectionName
       ? conn.getNamedDb(connectionName, args.database as string)
       : conn.getDb(args.database as string);

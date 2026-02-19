@@ -16,14 +16,27 @@ import {
 
 /**
  * Load configuration from the JSON config file.
- * Returns an empty object if the file doesn't exist or is invalid.
+ * Returns an empty object if the file doesn't exist.
+ * Logs a warning and returns empty object if the file is corrupted.
  */
 export function loadConfigFile(path = CONFIG_FILE): OrbitConfig {
   if (!existsSync(path)) return {};
+
+  let raw: string;
   try {
-    const raw = readFileSync(path, "utf-8");
+    raw = readFileSync(path, "utf-8");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`Warning: Could not read config file "${path}": ${message}`);
+    return {};
+  }
+
+  try {
     return JSON.parse(raw) as OrbitConfig;
-  } catch {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`Warning: Config file "${path}" contains invalid JSON: ${message}`);
+    console.warn("Using default configuration. Please fix or delete the config file.");
     return {};
   }
 }
