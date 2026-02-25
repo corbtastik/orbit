@@ -13,13 +13,24 @@ export interface ResourceDef {
   isTemplate: boolean;
   /** Fetch the resource data. Variables are extracted from the URI. */
   read: (
-    client: AtlasClient,
+    client: AtlasClient | undefined,
     conn: ConnectionManager | undefined,
     vars: Record<string, string>,
   ) => Promise<unknown>;
 }
 
 const P = "/api/atlas/v2";
+
+/**
+ * Helper to require a defined Atlas client for resources.
+ * Throws if no Atlas profile is configured.
+ */
+function requireClient(client: AtlasClient | undefined): AtlasClient {
+  if (!client) {
+    throw new Error("Atlas profile not configured. Configure at least one Atlas profile to access this resource.");
+  }
+  return client;
+}
 
 /**
  * All MCP resources — Atlas API resources and MongoDB database resources.
@@ -39,7 +50,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "List all accessible Atlas organizations",
     mimeType: "application/json",
     isTemplate: false,
-    read: (c) => c.get(`${P}/orgs`),
+    read: (c) => requireClient(c).get(`${P}/orgs`),
   },
   {
     uri: "atlas://orgs/{orgId}",
@@ -47,7 +58,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Organization details",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) => c.get(`${P}/orgs/${enc(v.orgId)}`),
+    read: (c, _conn, v) => requireClient(c).get(`${P}/orgs/${enc(v.orgId)}`),
   },
   {
     uri: "atlas://orgs/{orgId}/projects",
@@ -55,7 +66,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Projects in one organization",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) => c.get(`${P}/orgs/${enc(v.orgId)}/groups`),
+    read: (c, _conn, v) => requireClient(c).get(`${P}/orgs/${enc(v.orgId)}/groups`),
   },
 
   // Projects
@@ -65,7 +76,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "List all accessible Atlas projects",
     mimeType: "application/json",
     isTemplate: false,
-    read: (c) => c.get(`${P}/groups`),
+    read: (c) => requireClient(c).get(`${P}/groups`),
   },
   {
     uri: "atlas://projects/{groupId}",
@@ -73,7 +84,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Project details",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) => c.get(`${P}/groups/${enc(v.groupId)}`),
+    read: (c, _conn, v) => requireClient(c).get(`${P}/groups/${enc(v.groupId)}`),
   },
   {
     uri: "atlas://projects/{groupId}/clusters",
@@ -81,7 +92,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     description: "Clusters in one project",
     mimeType: "application/json",
     isTemplate: true,
-    read: (c, _conn, v) => c.get(`${P}/groups/${enc(v.groupId)}/clusters`),
+    read: (c, _conn, v) => requireClient(c).get(`${P}/groups/${enc(v.groupId)}/clusters`),
   },
   {
     uri: "atlas://projects/{groupId}/clusters/{clusterName}",
@@ -90,7 +101,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     mimeType: "application/json",
     isTemplate: true,
     read: (c, _conn, v) =>
-      c.get(
+      requireClient(c).get(
         `${P}/groups/${enc(v.groupId)}/clusters/${enc(v.clusterName)}`,
       ),
   },
@@ -101,7 +112,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     mimeType: "application/json",
     isTemplate: true,
     read: (c, _conn, v) =>
-      c.get(`${P}/groups/${enc(v.groupId)}/databaseUsers`),
+      requireClient(c).get(`${P}/groups/${enc(v.groupId)}/databaseUsers`),
   },
   {
     uri: "atlas://projects/{groupId}/access-list",
@@ -110,7 +121,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     mimeType: "application/json",
     isTemplate: true,
     read: (c, _conn, v) =>
-      c.get(`${P}/groups/${enc(v.groupId)}/accessList`),
+      requireClient(c).get(`${P}/groups/${enc(v.groupId)}/accessList`),
   },
   {
     uri: "atlas://projects/{groupId}/alerts",
@@ -119,7 +130,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     mimeType: "application/json",
     isTemplate: true,
     read: (c, _conn, v) =>
-      c.get(`${P}/groups/${enc(v.groupId)}/alerts`),
+      requireClient(c).get(`${P}/groups/${enc(v.groupId)}/alerts`),
   },
   {
     uri: "atlas://projects/{groupId}/alert-configs",
@@ -128,7 +139,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     mimeType: "application/json",
     isTemplate: true,
     read: (c, _conn, v) =>
-      c.get(`${P}/groups/${enc(v.groupId)}/alertConfigs`),
+      requireClient(c).get(`${P}/groups/${enc(v.groupId)}/alertConfigs`),
   },
   {
     uri: "atlas://projects/{groupId}/backups/{clusterName}",
@@ -137,7 +148,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     mimeType: "application/json",
     isTemplate: true,
     read: (c, _conn, v) =>
-      c.get(
+      requireClient(c).get(
         `${P}/groups/${enc(v.groupId)}/clusters/${enc(v.clusterName)}/backup/snapshots`,
       ),
   },
@@ -148,7 +159,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     mimeType: "application/json",
     isTemplate: true,
     read: (c, _conn, v) =>
-      c.get(`${P}/groups/${enc(v.groupId)}/events`),
+      requireClient(c).get(`${P}/groups/${enc(v.groupId)}/events`),
   },
   {
     uri: "atlas://projects/{groupId}/processes",
@@ -157,7 +168,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     mimeType: "application/json",
     isTemplate: true,
     read: (c, _conn, v) =>
-      c.get(`${P}/groups/${enc(v.groupId)}/processes`),
+      requireClient(c).get(`${P}/groups/${enc(v.groupId)}/processes`),
   },
   {
     uri: "atlas://projects/{groupId}/integrations",
@@ -166,7 +177,7 @@ export const RESOURCE_REGISTRY: ResourceDef[] = [
     mimeType: "application/json",
     isTemplate: true,
     read: (c, _conn, v) =>
-      c.get(`${P}/groups/${enc(v.groupId)}/integrations`),
+      requireClient(c).get(`${P}/groups/${enc(v.groupId)}/integrations`),
   },
 
   // =========================================================================

@@ -8,7 +8,7 @@ import {
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { AtlasClient, dispatch } from "@orbit/core";
+import { AtlasClientManager, dispatch } from "@orbit/core";
 import type { ActionMap } from "@orbit/core";
 import {
   TOOL_REGISTRY,
@@ -49,7 +49,7 @@ export interface ServerOptions {
  * connection for backward compatibility.
  */
 export function createServer(
-  client: AtlasClient,
+  atlasManager: AtlasClientManager,
   conn?: ConnectionManager,
   rdbmsConn?: RdbmsConnectionManager,
   options: ServerOptions = {},
@@ -66,6 +66,7 @@ export function createServer(
         "OrbitAI MCP Server — provides 100% coverage of the MongoDB Atlas Admin API v2, " +
         "direct MongoDB database operations, and RDBMS-to-MongoDB migration tools. " +
         "Use Atlas tools (manage_*) for infrastructure: clusters, security, backups, monitoring. " +
+        "Atlas tools support an optional 'atlasProfile' parameter for cross-org operations. " +
         "Use database tools (find, aggregate, insert-many, etc.) for querying and managing data. " +
         "Use RDBMS tools (connect-rdbms, introspect-schema, etc.) for migrating from PostgreSQL, SQL Server, or SQLite. " +
         "Use the connect tool to establish a MongoDB connection before running database operations. " +
@@ -77,8 +78,8 @@ export function createServer(
 
   const readOnly = options.readOnly ?? false;
 
-  registerTools(server, client, conn, rdbmsConn, readOnly);
-  registerResources(server, client, conn);
+  registerTools(server, atlasManager, conn, rdbmsConn, readOnly);
+  registerResources(server, atlasManager, conn);
   registerPrompts(server);
 
   return server;
@@ -90,22 +91,35 @@ export function createServer(
 
 function registerTools(
   server: Server,
-  client: AtlasClient,
+  atlasManager: AtlasClientManager,
   conn: ConnectionManager | undefined,
   rdbmsConn: RdbmsConnectionManager | undefined,
   readOnly: boolean,
 ): void {
   // --- Atlas Admin API tool index ---
+  // Build input schemas with optional atlasProfile parameter for all Atlas tools
   const toolIndex = new Map<
     string,
     { description: string; actions: ActionMap; inputSchema: ReturnType<typeof buildToolSchema> }
   >();
 
   for (const def of TOOL_REGISTRY) {
+    const baseSchema = buildToolSchema(def.actions);
+    // Add atlasProfile parameter to all Atlas tools
+    const schemaWithProfile = {
+      ...baseSchema,
+      properties: {
+        ...baseSchema.properties,
+        atlasProfile: {
+          type: "string",
+          description: `Atlas profile to use for this operation. Available: ${atlasManager.listProfiles().join(", ") || "(none)"}. Default: ${atlasManager.getDefaultProfileName()}`,
+        },
+      },
+    };
     toolIndex.set(def.name, {
       description: def.description,
       actions: def.actions,
-      inputSchema: buildToolSchema(def.actions),
+      inputSchema: schemaWithProfile,
     });
   }
 
@@ -191,6 +205,16 @@ function registerTools(
           "body must be a JSON object, not a string.",
         );
       }
+    }
+
+    // Get the Atlas client for the specified profile (or default)
+    const atlasProfile = args.atlasProfile as string | undefined;
+    let client;
+    try {
+      client = atlasManager.getClient(atlasProfile);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return errorResult(message);
     }
 
     try {
@@ -391,11 +415,21 @@ function createStubConnectionManager(): ConnectionManager {
 
 function registerResources(
   server: Server,
-  client: AtlasClient,
+  atlasManager: AtlasClientManager,
   conn: ConnectionManager | undefined,
 ): void {
   const staticResources = RESOURCE_REGISTRY.filter((r) => !r.isTemplate);
   const templateResources = RESOURCE_REGISTRY.filter((r) => r.isTemplate);
+
+  // Use default Atlas client for resources (resources don't support profile selection yet)
+  const getDefaultClient = () => {
+    try {
+      return atlasManager.getClient();
+    } catch {
+      // Return undefined if no profiles configured - resources will handle this
+      return undefined;
+    }
+  };
 
   // resources/list — return static (non-template) resources
   server.setRequestHandler(
@@ -428,6 +462,7 @@ function registerResources(
     ReadResourceRequestSchema,
     async (request) => {
       const { uri } = request.params;
+      const client = getDefaultClient();
 
       // Try static match first
       for (const res of staticResources) {

@@ -120,7 +120,8 @@ describe("loadConfig", () => {
     it("returns defaults when no config file or env vars", () => {
       const config = loadConfig();
 
-      expect(config.atlas.baseUrl).toBe(DEFAULTS.atlas.baseUrl);
+      expect(config.atlas.default).toBe("default");
+      expect(config.atlas.profiles).toEqual({});
       expect(config.server.port).toBe(DEFAULTS.server.port);
       expect(config.server.host).toBe(DEFAULTS.server.host);
       expect(config.server.readOnly).toBe(DEFAULTS.server.readOnly);
@@ -134,7 +135,7 @@ describe("loadConfig", () => {
   });
 
   describe("config file values", () => {
-    it("loads atlas credentials from config file", () => {
+    it("loads atlas credentials from config file as default profile", () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
         atlas: {
@@ -147,10 +148,40 @@ describe("loadConfig", () => {
 
       const config = loadConfig();
 
-      expect(config.atlas.publicKey).toBe("file-public-key");
-      expect(config.atlas.privateKey).toBe("file-private-key");
-      expect(config.atlas.orgId).toBe("org123");
-      expect(config.atlas.groupId).toBe("group456");
+      expect(config.atlas.default).toBe("default");
+      expect(config.atlas.profiles.default.publicKey).toBe("file-public-key");
+      expect(config.atlas.profiles.default.privateKey).toBe("file-private-key");
+      expect(config.atlas.profiles.default.orgId).toBe("org123");
+      expect(config.atlas.profiles.default.groupId).toBe("group456");
+    });
+
+    it("loads named atlas profiles from config file", () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        atlas: {
+          default: "prod",
+          profiles: {
+            prod: {
+              publicKey: "prod-public",
+              privateKey: "prod-private",
+              orgId: "org-prod",
+            },
+            dev: {
+              publicKey: "dev-public",
+              privateKey: "dev-private",
+              orgId: "org-dev",
+            },
+          },
+        },
+      }));
+
+      const config = loadConfig();
+
+      expect(config.atlas.default).toBe("prod");
+      expect(config.atlas.profiles.prod.publicKey).toBe("prod-public");
+      expect(config.atlas.profiles.prod.orgId).toBe("org-prod");
+      expect(config.atlas.profiles.dev.publicKey).toBe("dev-public");
+      expect(config.atlas.profiles.dev.orgId).toBe("org-dev");
     });
 
     it("loads server settings from config file", () => {
@@ -212,7 +243,7 @@ describe("loadConfig", () => {
   });
 
   describe("environment variable overrides", () => {
-    it("env vars override config file for atlas", () => {
+    it("env vars override config file for default atlas profile", () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
         atlas: {
@@ -226,8 +257,57 @@ describe("loadConfig", () => {
 
       const config = loadConfig();
 
-      expect(config.atlas.publicKey).toBe("env-key");
-      expect(config.atlas.privateKey).toBe("env-secret");
+      expect(config.atlas.profiles.default.publicKey).toBe("env-key");
+      expect(config.atlas.profiles.default.privateKey).toBe("env-secret");
+    });
+
+    it("named profile env vars create profiles", () => {
+      process.env.ATLAS_PROD_PUBLIC_KEY = "prod-key";
+      process.env.ATLAS_PROD_PRIVATE_KEY = "prod-secret";
+      process.env.ATLAS_PROD_ORG_ID = "prod-org";
+      process.env.ATLAS_DEV_PUBLIC_KEY = "dev-key";
+      process.env.ATLAS_DEV_PRIVATE_KEY = "dev-secret";
+
+      const config = loadConfig();
+
+      expect(config.atlas.profiles.prod.publicKey).toBe("prod-key");
+      expect(config.atlas.profiles.prod.privateKey).toBe("prod-secret");
+      expect(config.atlas.profiles.prod.orgId).toBe("prod-org");
+      expect(config.atlas.profiles.dev.publicKey).toBe("dev-key");
+      expect(config.atlas.profiles.dev.privateKey).toBe("dev-secret");
+    });
+
+    it("ATLAS_DEFAULT_PROFILE sets default profile name", () => {
+      process.env.ATLAS_DEFAULT_PROFILE = "staging";
+      process.env.ATLAS_STAGING_PUBLIC_KEY = "staging-key";
+      process.env.ATLAS_STAGING_PRIVATE_KEY = "staging-secret";
+
+      const config = loadConfig();
+
+      expect(config.atlas.default).toBe("staging");
+    });
+
+    it("env profile vars override config file profile values", () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        atlas: {
+          profiles: {
+            prod: {
+              publicKey: "file-prod-key",
+              privateKey: "file-prod-secret",
+              orgId: "file-org",
+            },
+          },
+        },
+      }));
+
+      process.env.ATLAS_PROD_PUBLIC_KEY = "env-prod-key";
+
+      const config = loadConfig();
+
+      expect(config.atlas.profiles.prod.publicKey).toBe("env-prod-key");
+      expect(config.atlas.profiles.prod.privateKey).toBe("file-prod-secret");
+      expect(config.atlas.profiles.prod.orgId).toBe("file-org");
     });
 
     it("env vars override config file for server", () => {
@@ -445,50 +525,81 @@ describe("loadConfig", () => {
 });
 
 describe("hasAtlasCredentials", () => {
-  it("returns true when both keys are set", () => {
+  it("returns true when at least one profile has both keys", () => {
     const config = {
       atlas: {
-        publicKey: "key",
-        privateKey: "secret",
-        baseUrl: "https://cloud.mongodb.com",
+        default: "default",
+        profiles: {
+          default: {
+            publicKey: "key",
+            privateKey: "secret",
+            baseUrl: "https://cloud.mongodb.com",
+          },
+        },
       },
-    } as ResolvedOrbitConfig;
+    } as unknown as ResolvedOrbitConfig;
 
     expect(hasAtlasCredentials(config)).toBe(true);
   });
 
-  it("returns false when publicKey is missing", () => {
+  it("returns true when any profile has valid credentials", () => {
     const config = {
       atlas: {
-        publicKey: "",
-        privateKey: "secret",
-        baseUrl: "https://cloud.mongodb.com",
+        default: "default",
+        profiles: {
+          prod: {
+            publicKey: "prod-key",
+            privateKey: "prod-secret",
+            baseUrl: "https://cloud.mongodb.com",
+          },
+        },
       },
-    } as ResolvedOrbitConfig;
+    } as unknown as ResolvedOrbitConfig;
+
+    expect(hasAtlasCredentials(config)).toBe(true);
+  });
+
+  it("returns false when profile has empty publicKey", () => {
+    const config = {
+      atlas: {
+        default: "default",
+        profiles: {
+          default: {
+            publicKey: "",
+            privateKey: "secret",
+            baseUrl: "https://cloud.mongodb.com",
+          },
+        },
+      },
+    } as unknown as ResolvedOrbitConfig;
 
     expect(hasAtlasCredentials(config)).toBe(false);
   });
 
-  it("returns false when privateKey is missing", () => {
+  it("returns false when profile has empty privateKey", () => {
     const config = {
       atlas: {
-        publicKey: "key",
-        privateKey: "",
-        baseUrl: "https://cloud.mongodb.com",
+        default: "default",
+        profiles: {
+          default: {
+            publicKey: "key",
+            privateKey: "",
+            baseUrl: "https://cloud.mongodb.com",
+          },
+        },
       },
-    } as ResolvedOrbitConfig;
+    } as unknown as ResolvedOrbitConfig;
 
     expect(hasAtlasCredentials(config)).toBe(false);
   });
 
-  it("returns false when both keys are missing", () => {
+  it("returns false when no profiles exist", () => {
     const config = {
       atlas: {
-        publicKey: "",
-        privateKey: "",
-        baseUrl: "https://cloud.mongodb.com",
+        default: "default",
+        profiles: {},
       },
-    } as ResolvedOrbitConfig;
+    } as unknown as ResolvedOrbitConfig;
 
     expect(hasAtlasCredentials(config)).toBe(false);
   });

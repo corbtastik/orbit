@@ -6,10 +6,21 @@
         "/Users/corbs/dev/github/corbtastik/orbit/packages/mcp-server/dist/index.js"
       ],
       "env": {
-        "ATLAS_PRIVATE_KEY": "FAKE",
-        "ATLAS_PUBLIC_KEY": "FAKE",
-        "MONGODB_CONN_LOCAL": "FAKE",
-        "MONGODB_CONN_ATLAS": "FAKE"
+        "ATLAS_PUBLIC_KEY": "your-default-public-key",
+        "ATLAS_PRIVATE_KEY": "your-default-private-key",
+
+        "ATLAS_PROD_PUBLIC_KEY": "your-prod-public-key",
+        "ATLAS_PROD_PRIVATE_KEY": "your-prod-private-key",
+        "ATLAS_PROD_ORG_ID": "your-prod-org-id",
+
+        "ATLAS_DEV_PUBLIC_KEY": "your-dev-public-key",
+        "ATLAS_DEV_PRIVATE_KEY": "your-dev-private-key",
+        "ATLAS_DEV_ORG_ID": "your-dev-org-id",
+
+        "ATLAS_DEFAULT_PROFILE": "prod",
+
+        "MONGODB_CONN_LOCAL": "mongodb://localhost:27017",
+        "MONGODB_CONN_ATLAS": "mongodb+srv://user:pass@cluster.mongodb.net"
       }
     }
   },

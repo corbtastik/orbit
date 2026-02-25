@@ -1,5 +1,5 @@
 // Client
-export { AtlasClient } from "./client/index.js";
+export { AtlasClient, AtlasClientManager } from "./client/index.js";
 
 // Auth
 export { resolveConfig } from "./auth/index.js";
@@ -14,11 +14,16 @@ export {
   loadConfig,
   hasAtlasCredentials,
   hasLlmConfig,
+  getDefaultAtlasProfile,
+  getAtlasProfile,
+  listAtlasProfiles,
 } from "./config/index.js";
 
 export type {
   LlmProviderName,
   OutputFormat,
+  AtlasProfile,
+  ResolvedAtlasProfile,
   AtlasConfigSection,
   MongoDbConfigSection,
   ServerConfigSection,

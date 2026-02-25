@@ -10,7 +10,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
-import { AtlasClient } from "@orbit/core";
+import { AtlasClientManager } from "@orbit/core";
 import { SessionManager, MaxSessionsExceededError } from "./session-manager.js";
 import { createServer as createMcpServer } from "../server.js";
 
@@ -20,8 +20,8 @@ export interface HttpServerOptions {
   port?: number;
   /** Host to bind to. Default: "127.0.0.1" (localhost only) */
   host?: string;
-  /** Atlas client for Atlas Admin API tools. */
-  atlasClient: AtlasClient;
+  /** Atlas client manager for Atlas Admin API tools (supports multi-profile). */
+  atlasManager: AtlasClientManager;
   /** Block database write operations when true. */
   readOnly?: boolean;
 }
@@ -51,7 +51,7 @@ export function createHttpServer(options: HttpServerOptions): HttpServerResult {
   const {
     port = 3600,
     host = "127.0.0.1",
-    atlasClient,
+    atlasManager,
     readOnly = false,
   } = options;
 
@@ -92,7 +92,7 @@ export function createHttpServer(options: HttpServerOptions): HttpServerResult {
       });
 
       const server = createMcpServer(
-        atlasClient,
+        atlasManager,
         session.connectionManager,
         session.rdbmsConnectionManager,
         { readOnly },

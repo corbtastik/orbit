@@ -7,6 +7,7 @@
 
 import {
   loadConfig,
+  getDefaultAtlasProfile,
   type ResolvedOrbitConfig,
   type LlmProviderName,
   type OutputFormat,
@@ -86,13 +87,16 @@ export function resolveCliConfig(flags: CliFlags = {}): CliConfig {
     ? resolveApiKeyForProvider(provider)
     : apiKey;
 
+  // Get the default Atlas profile (if any)
+  const defaultProfile = getDefaultAtlasProfile(config);
+
   return {
     atlas: {
-      publicKey: config.atlas.publicKey || undefined,
-      privateKey: config.atlas.privateKey || undefined,
-      orgId: config.atlas.orgId,
-      groupId: config.atlas.groupId,
-      baseUrl: config.atlas.baseUrl,
+      publicKey: defaultProfile?.publicKey || undefined,
+      privateKey: defaultProfile?.privateKey || undefined,
+      orgId: defaultProfile?.orgId,
+      groupId: defaultProfile?.groupId,
+      baseUrl: defaultProfile?.baseUrl ?? DEFAULTS.atlas.baseUrl,
     },
     llm: {
       provider,

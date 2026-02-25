@@ -11,6 +11,7 @@ import {
   DEFAULTS,
   type OrbitConfig,
   type ResolvedOrbitConfig,
+  type ResolvedAtlasProfile,
   type LlmProviderName,
 } from "./types.js";
 
@@ -78,6 +79,134 @@ function scanMongoDbConnections(): Record<string, string> {
 }
 
 /**
+ * Scan environment for Atlas profile variables.
+ * Pattern: ATLAS_<PROFILE>_PUBLIC_KEY, ATLAS_<PROFILE>_PRIVATE_KEY
+ *
+ * Returns a map of profile name -> partial profile config from env.
+ */
+function scanAtlasProfiles(): Record<string, Partial<ResolvedAtlasProfile>> {
+  const profiles: Record<string, Partial<ResolvedAtlasProfile>> = {};
+  const publicKeySuffix = ENV.ATLAS_PROFILE_SUFFIX_PUBLIC;
+  const privateKeySuffix = ENV.ATLAS_PROFILE_SUFFIX_PRIVATE;
+  const orgIdSuffix = ENV.ATLAS_PROFILE_SUFFIX_ORG;
+  const groupIdSuffix = ENV.ATLAS_PROFILE_SUFFIX_GROUP;
+  const baseUrlSuffix = ENV.ATLAS_PROFILE_SUFFIX_BASE_URL;
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith("ATLAS_") || !value) continue;
+
+    // Skip legacy single-credential vars
+    if (key === ENV.ATLAS_PUBLIC_KEY || key === ENV.ATLAS_PRIVATE_KEY ||
+        key === ENV.ATLAS_ORG_ID || key === ENV.ATLAS_GROUP_ID ||
+        key === ENV.ATLAS_BASE_URL || key === ENV.ATLAS_DEFAULT_PROFILE) {
+      continue;
+    }
+
+    // Extract profile name from ATLAS_<PROFILE>_<SUFFIX>
+    let profileName: string | null = null;
+    let field: keyof ResolvedAtlasProfile | null = null;
+
+    if (key.endsWith(publicKeySuffix)) {
+      profileName = key.slice(6, -publicKeySuffix.length).toLowerCase();
+      field = "publicKey";
+    } else if (key.endsWith(privateKeySuffix)) {
+      profileName = key.slice(6, -privateKeySuffix.length).toLowerCase();
+      field = "privateKey";
+    } else if (key.endsWith(orgIdSuffix)) {
+      profileName = key.slice(6, -orgIdSuffix.length).toLowerCase();
+      field = "orgId";
+    } else if (key.endsWith(groupIdSuffix)) {
+      profileName = key.slice(6, -groupIdSuffix.length).toLowerCase();
+      field = "groupId";
+    } else if (key.endsWith(baseUrlSuffix)) {
+      profileName = key.slice(6, -baseUrlSuffix.length).toLowerCase();
+      field = "baseUrl";
+    }
+
+    if (profileName && field) {
+      if (!profiles[profileName]) {
+        profiles[profileName] = {};
+      }
+      profiles[profileName][field] = value;
+    }
+  }
+
+  return profiles;
+}
+
+/**
+ * Resolve Atlas profiles from config file and environment variables.
+ * Env vars override config file values.
+ */
+function resolveAtlasProfiles(
+  file: OrbitConfig,
+): { default: string; profiles: Record<string, ResolvedAtlasProfile> } {
+  const profiles: Record<string, ResolvedAtlasProfile> = {};
+  const envProfiles = scanAtlasProfiles();
+
+  // 1. Add profiles from config file
+  if (file.atlas?.profiles) {
+    for (const [name, profile] of Object.entries(file.atlas.profiles)) {
+      profiles[name] = {
+        publicKey: profile.publicKey,
+        privateKey: profile.privateKey,
+        orgId: profile.orgId,
+        groupId: profile.groupId,
+        baseUrl: profile.baseUrl ?? DEFAULTS.atlas.baseUrl,
+      };
+    }
+  }
+
+  // 2. Create/merge "default" profile from legacy single-credential config
+  const legacyPublicKey = process.env[ENV.ATLAS_PUBLIC_KEY] ?? file.atlas?.publicKey;
+  const legacyPrivateKey = process.env[ENV.ATLAS_PRIVATE_KEY] ?? file.atlas?.privateKey;
+
+  if (legacyPublicKey && legacyPrivateKey) {
+    profiles["default"] = {
+      publicKey: legacyPublicKey,
+      privateKey: legacyPrivateKey,
+      orgId: process.env[ENV.ATLAS_ORG_ID] ?? file.atlas?.orgId,
+      groupId: process.env[ENV.ATLAS_GROUP_ID] ?? file.atlas?.groupId,
+      baseUrl: process.env[ENV.ATLAS_BASE_URL] ?? file.atlas?.baseUrl ?? DEFAULTS.atlas.baseUrl,
+    };
+  }
+
+  // 3. Merge env var profiles (override config file)
+  for (const [name, envProfile] of Object.entries(envProfiles)) {
+    if (!profiles[name]) {
+      // Only create if we have at least public and private keys
+      if (envProfile.publicKey && envProfile.privateKey) {
+        profiles[name] = {
+          publicKey: envProfile.publicKey,
+          privateKey: envProfile.privateKey,
+          orgId: envProfile.orgId,
+          groupId: envProfile.groupId,
+          baseUrl: envProfile.baseUrl ?? DEFAULTS.atlas.baseUrl,
+        };
+      }
+    } else {
+      // Merge env vars into existing profile (env overrides config)
+      if (envProfile.publicKey) profiles[name].publicKey = envProfile.publicKey;
+      if (envProfile.privateKey) profiles[name].privateKey = envProfile.privateKey;
+      if (envProfile.orgId) profiles[name].orgId = envProfile.orgId;
+      if (envProfile.groupId) profiles[name].groupId = envProfile.groupId;
+      if (envProfile.baseUrl) profiles[name].baseUrl = envProfile.baseUrl;
+    }
+  }
+
+  // 4. Determine default profile name
+  const defaultProfileName =
+    process.env[ENV.ATLAS_DEFAULT_PROFILE] ??
+    file.atlas?.default ??
+    "default";
+
+  return {
+    default: defaultProfileName,
+    profiles,
+  };
+}
+
+/**
  * Resolve the API key for a given LLM provider.
  * Checks generic ORBIT_LLM_API_KEY first, then provider-specific env vars, then config.
  */
@@ -120,27 +249,11 @@ export function loadConfig(configPath?: string): ResolvedOrbitConfig {
   // Scan for MONGODB_CONN_* env vars
   const envMongoConnections = scanMongoDbConnections();
 
+  // Resolve Atlas profiles from config file and env vars
+  const atlas = resolveAtlasProfiles(file);
+
   return {
-    atlas: {
-      publicKey:
-        process.env[ENV.ATLAS_PUBLIC_KEY] ??
-        file.atlas?.publicKey ??
-        "",
-      privateKey:
-        process.env[ENV.ATLAS_PRIVATE_KEY] ??
-        file.atlas?.privateKey ??
-        "",
-      orgId:
-        process.env[ENV.ATLAS_ORG_ID] ??
-        file.atlas?.orgId,
-      groupId:
-        process.env[ENV.ATLAS_GROUP_ID] ??
-        file.atlas?.groupId,
-      baseUrl:
-        process.env[ENV.ATLAS_BASE_URL] ??
-        file.atlas?.baseUrl ??
-        DEFAULTS.atlas.baseUrl,
-    },
+    atlas,
 
     mongodb: {
       default:
@@ -220,9 +333,43 @@ export function loadConfig(configPath?: string): ResolvedOrbitConfig {
 
 /**
  * Check if Atlas credentials are configured.
+ * Returns true if at least one profile has valid credentials.
  */
 export function hasAtlasCredentials(config: ResolvedOrbitConfig): boolean {
-  return !!(config.atlas.publicKey && config.atlas.privateKey);
+  const profiles = config.atlas.profiles;
+  return Object.values(profiles).some(
+    (profile) => profile.publicKey && profile.privateKey
+  );
+}
+
+/**
+ * Get the default Atlas profile.
+ * Returns undefined if no default profile is configured.
+ */
+export function getDefaultAtlasProfile(
+  config: ResolvedOrbitConfig,
+): ResolvedAtlasProfile | undefined {
+  return config.atlas.profiles[config.atlas.default];
+}
+
+/**
+ * Get an Atlas profile by name.
+ * Falls back to default profile if name is not provided.
+ * Returns undefined if profile not found.
+ */
+export function getAtlasProfile(
+  config: ResolvedOrbitConfig,
+  name?: string,
+): ResolvedAtlasProfile | undefined {
+  const profileName = name ?? config.atlas.default;
+  return config.atlas.profiles[profileName];
+}
+
+/**
+ * List all available Atlas profile names.
+ */
+export function listAtlasProfiles(config: ResolvedOrbitConfig): string[] {
+  return Object.keys(config.atlas.profiles);
 }
 
 /**
