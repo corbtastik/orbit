@@ -12,7 +12,7 @@ import type {
 } from "../types.js";
 import type { RdbmsConnectionManager } from "../connection.js";
 import { getMappingStore } from "../utils.js";
-import { camelCase } from "./helpers.js";
+import { camelCase, validateSqlFilter } from "./helpers.js";
 
 /**
  * Generate a mapping recommendation based on schema analysis.
@@ -210,7 +210,7 @@ export const createMappingTool: RdbmsToolDef = {
     const columns = args.columns as ColumnMapping[] | undefined;
     const embeds = args.embeds as EmbedConfig[] | undefined;
     const references = args.references as ReferenceConfig[] | undefined;
-    const filter = args.filter as string | undefined;
+    const filter = validateSqlFilter(args.filter as string | undefined);
 
     const driver = rdbms.getDriver(connName);
     const store = getMappingStore(rdbms);

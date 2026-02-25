@@ -11,13 +11,13 @@ import type {
   MigrationOptions,
   MigrationProgress,
   MigrationResult,
-  MigrationError,
   MigrationEstimate,
   EmbedEstimate,
   VerificationResult,
   BatchMigrationResult,
 } from "./types.js";
 import { DocumentTransformer } from "./transformer.js";
+import { validateSqlFilter } from "../mapping-tools/helpers.js";
 
 /**
  * Default migration options.
@@ -146,11 +146,14 @@ export class MigrationExecutor {
       }
     }
 
+    // Validate filter for SQL injection (defense in depth)
+    const safeFilter = validateSqlFilter(mapping.filter);
+
     // Stream rows and migrate
     const streamOptions = {
       schema,
       batchSize: opts.batchSize,
-      where: mapping.filter,
+      where: safeFilter,
     };
 
     try {
@@ -375,9 +378,12 @@ export class MigrationExecutor {
     // Account for filters
     let expectedCount = sourceCount;
     if (mapping.filter) {
+      // Validate filter for SQL injection (defense in depth)
+      const safeFilter = validateSqlFilter(mapping.filter);
+
       const filteredSql = driver.type === "sqlite"
-        ? `SELECT COUNT(*) as count FROM "${table}" WHERE ${mapping.filter}`
-        : `SELECT COUNT(*) as count FROM "${schema ?? "public"}"."${table}" WHERE ${mapping.filter}`;
+        ? `SELECT COUNT(*) as count FROM "${table}" WHERE ${safeFilter}`
+        : `SELECT COUNT(*) as count FROM "${schema ?? "public"}"."${table}" WHERE ${safeFilter}`;
 
       const result = await driver.query<{ count: number }>(filteredSql);
       expectedCount = result[0]?.count ?? sourceCount;

@@ -10,6 +10,7 @@ import type {
   MigrationPattern,
 } from "../types.js";
 import { getMappingStore } from "../utils.js";
+import { validateSqlFilter } from "./helpers.js";
 
 /**
  * update-mapping — Update an existing mapping.
@@ -120,8 +121,9 @@ export const updateMappingTool: RdbmsToolDef = {
     }
 
     if (args.filter !== undefined) {
-      store.update(mappingId, { filter: args.filter as string || undefined });
-      updates.push(`filter → ${args.filter || "(cleared)"}`);
+      const validatedFilter = validateSqlFilter(args.filter as string || undefined);
+      store.update(mappingId, { filter: validatedFilter });
+      updates.push(`filter → ${validatedFilter || "(cleared)"}`);
     }
 
     if (args.addEmbed) {

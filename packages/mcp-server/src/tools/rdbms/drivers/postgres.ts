@@ -16,6 +16,17 @@ import type {
 } from "./types.js";
 
 /**
+ * Default PostgreSQL connection pool settings.
+ * These limits prevent connection exhaustion in multi-session scenarios.
+ */
+const DEFAULT_POOL_OPTIONS: pg.PoolConfig = {
+  max: 5,                    // Max connections per pool
+  min: 0,                    // Don't maintain idle connections
+  idleTimeoutMillis: 30000,  // Close idle connections after 30s
+  connectionTimeoutMillis: 10000, // Connection timeout 10s
+};
+
+/**
  * PostgreSQL driver implementing the RdbmsDriver interface.
  */
 export class PostgresDriver implements RdbmsDriver {
@@ -28,7 +39,10 @@ export class PostgresDriver implements RdbmsDriver {
    * @param connectionString PostgreSQL connection string (postgresql://user:pass@host:port/db)
    */
   async connect(connectionString: string): Promise<void> {
-    this.pool = new pg.Pool({ connectionString });
+    this.pool = new pg.Pool({
+      connectionString,
+      ...DEFAULT_POOL_OPTIONS,
+    });
 
     // Test the connection
     const client = await this.pool.connect();

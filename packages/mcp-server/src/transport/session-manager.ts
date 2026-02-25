@@ -25,6 +25,18 @@ export interface SessionManagerOptions {
   idleTimeoutMs?: number;
   /** Cleanup interval in milliseconds. Default: 1 minute. */
   cleanupIntervalMs?: number;
+  /** Maximum number of concurrent sessions. Default: 1000. */
+  maxSessions?: number;
+}
+
+/**
+ * Error thrown when the maximum session limit is reached.
+ */
+export class MaxSessionsExceededError extends Error {
+  constructor(maxSessions: number) {
+    super(`Maximum sessions (${maxSessions}) exceeded. Try again later.`);
+    this.name = "MaxSessionsExceededError";
+  }
 }
 
 /**
@@ -36,10 +48,12 @@ export class SessionManager {
 
   private readonly idleTimeoutMs: number;
   private readonly cleanupIntervalMs: number;
+  private readonly maxSessions: number;
 
   constructor(options: SessionManagerOptions = {}) {
     this.idleTimeoutMs = options.idleTimeoutMs ?? 30 * 60 * 1000; // 30 min
     this.cleanupIntervalMs = options.cleanupIntervalMs ?? 60 * 1000; // 1 min
+    this.maxSessions = options.maxSessions ?? 1000; // 1000 sessions
 
     // Start periodic cleanup
     this.startCleanup();
@@ -50,6 +64,8 @@ export class SessionManager {
    *
    * If the session exists, updates its lastActivity timestamp.
    * If not, creates a new session with fresh connection managers.
+   *
+   * @throws MaxSessionsExceededError if the session limit is reached
    */
   getOrCreate(sessionId: string): SessionContext {
     let session = this.sessions.get(sessionId);
@@ -58,6 +74,11 @@ export class SessionManager {
       // Update last activity
       session.lastActivity = new Date();
       return session;
+    }
+
+    // Check session limit before creating new session
+    if (this.sessions.size >= this.maxSessions) {
+      throw new MaxSessionsExceededError(this.maxSessions);
     }
 
     // Create new session with both connection managers
@@ -137,9 +158,14 @@ export class SessionManager {
       }
     }
 
-    // Destroy expired sessions
+    // Destroy expired sessions with per-session error handling
     for (const sessionId of expiredSessions) {
-      await this.destroy(sessionId);
+      try {
+        await this.destroy(sessionId);
+      } catch (err) {
+        // Log but continue cleaning up other sessions
+        console.error(`[SessionManager] Failed to destroy session ${sessionId}:`, err);
+      }
     }
   }
 

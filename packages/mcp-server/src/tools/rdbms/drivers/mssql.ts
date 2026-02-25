@@ -16,6 +16,16 @@ import type {
 } from "./types.js";
 
 /**
+ * Default SQL Server connection pool settings.
+ * These limits prevent connection exhaustion in multi-session scenarios.
+ */
+const DEFAULT_POOL_OPTIONS = {
+  max: 5,            // Max connections per pool
+  min: 0,            // Don't maintain idle connections
+  idleTimeoutMillis: 30000, // Close idle connections after 30s
+};
+
+/**
  * SQL Server driver implementing the RdbmsDriver interface.
  */
 export class MssqlDriver implements RdbmsDriver {
@@ -54,6 +64,7 @@ export class MssqlDriver implements RdbmsDriver {
         server: url.hostname,
         port: url.port ? parseInt(url.port, 10) : 1433,
         database: url.pathname.slice(1), // Remove leading /
+        pool: DEFAULT_POOL_OPTIONS,
         options: {
           encrypt: true,
           trustServerCertificate: true, // For local dev; set false in production
@@ -113,6 +124,7 @@ export class MssqlDriver implements RdbmsDriver {
       user,
       password,
       port,
+      pool: DEFAULT_POOL_OPTIONS,
       options: {
         encrypt,
         trustServerCertificate,

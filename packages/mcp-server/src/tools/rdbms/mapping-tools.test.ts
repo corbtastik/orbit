@@ -8,8 +8,163 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MappingStore } from "./mapping-store.js";
 import { SqliteDriver } from "./drivers/sqlite.js";
 import { RdbmsConnectionManager } from "./connection.js";
-import { MAPPING_TOOLS } from "./mapping-tools/index.js";
+import { MAPPING_TOOLS, validateSqlFilter, SqlInjectionError } from "./mapping-tools/index.js";
 import type { RdbmsToolDef, TableMapping, EmbedConfig, ReferenceConfig } from "./types.js";
+
+// ---------------------------------------------------------------------------
+// SQL Filter Validation Tests
+// ---------------------------------------------------------------------------
+
+describe("validateSqlFilter", () => {
+  describe("allows safe filters", () => {
+    it("allows simple equality", () => {
+      expect(validateSqlFilter("status = 'active'")).toBe("status = 'active'");
+    });
+
+    it("allows comparisons", () => {
+      expect(validateSqlFilter("age > 18")).toBe("age > 18");
+      expect(validateSqlFilter("price <= 100.00")).toBe("price <= 100.00");
+    });
+
+    it("allows AND/OR conditions", () => {
+      expect(validateSqlFilter("status = 'active' AND age > 18")).toBe("status = 'active' AND age > 18");
+    });
+
+    it("allows IN clauses", () => {
+      expect(validateSqlFilter("status IN ('active', 'pending')")).toBe("status IN ('active', 'pending')");
+    });
+
+    it("allows BETWEEN", () => {
+      expect(validateSqlFilter("created_at BETWEEN '2024-01-01' AND '2024-12-31'"))
+        .toBe("created_at BETWEEN '2024-01-01' AND '2024-12-31'");
+    });
+
+    it("allows LIKE patterns", () => {
+      expect(validateSqlFilter("name LIKE '%test%'")).toBe("name LIKE '%test%'");
+    });
+
+    it("allows IS NULL", () => {
+      expect(validateSqlFilter("deleted_at IS NULL")).toBe("deleted_at IS NULL");
+    });
+
+    it("returns undefined for undefined input", () => {
+      expect(validateSqlFilter(undefined)).toBeUndefined();
+    });
+
+    it("returns empty string for empty input", () => {
+      expect(validateSqlFilter("")).toBe("");
+    });
+  });
+
+  describe("blocks SQL injection patterns", () => {
+    it("blocks semicolons (multiple statements)", () => {
+      expect(() => validateSqlFilter("status = 'active'; DROP TABLE users"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks SQL comments (--)", () => {
+      expect(() => validateSqlFilter("status = 'active' -- ignore the rest"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks block comments (/*)", () => {
+      expect(() => validateSqlFilter("status = 'active' /* hidden */"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks DROP statements", () => {
+      expect(() => validateSqlFilter("1=1 DROP TABLE users"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks DELETE statements", () => {
+      expect(() => validateSqlFilter("1=1 DELETE FROM users"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks INSERT statements", () => {
+      expect(() => validateSqlFilter("1=1 INSERT INTO users VALUES(1)"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks UPDATE statements", () => {
+      expect(() => validateSqlFilter("1=1 UPDATE users SET admin=1"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks UNION injection", () => {
+      expect(() => validateSqlFilter("status = 'active' UNION SELECT * FROM passwords"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks TRUNCATE", () => {
+      expect(() => validateSqlFilter("1=1 TRUNCATE TABLE users"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks ALTER", () => {
+      expect(() => validateSqlFilter("1=1 ALTER TABLE users ADD admin INT"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks CREATE", () => {
+      expect(() => validateSqlFilter("1=1 CREATE TABLE hacked(id INT)"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks EXEC", () => {
+      expect(() => validateSqlFilter("1=1 EXEC xp_cmdshell 'whoami'"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks xp_ procedures", () => {
+      expect(() => validateSqlFilter("1=1; xp_cmdshell"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks SLEEP (DoS)", () => {
+      expect(() => validateSqlFilter("status = 'active' AND SLEEP(10)"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks BENCHMARK (DoS)", () => {
+      expect(() => validateSqlFilter("status = 'active' AND BENCHMARK(10000000, SHA1('test'))"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks INFORMATION_SCHEMA probing", () => {
+      expect(() => validateSqlFilter("1=1 AND (SELECT * FROM INFORMATION_SCHEMA.TABLES)"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks LOAD_FILE", () => {
+      expect(() => validateSqlFilter("status = LOAD_FILE('/etc/passwd')"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks INTO OUTFILE", () => {
+      expect(() => validateSqlFilter("1=1 INTO OUTFILE '/tmp/hack.txt'"))
+        .toThrow(SqlInjectionError);
+    });
+
+    it("blocks case-insensitive attacks", () => {
+      expect(() => validateSqlFilter("1=1; dRoP tAbLe users"))
+        .toThrow(SqlInjectionError);
+    });
+  });
+
+  describe("error messages", () => {
+    it("includes the dangerous pattern in error message", () => {
+      try {
+        validateSqlFilter("status = 'active'; DROP TABLE users");
+        expect.fail("Should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(SqlInjectionError);
+        expect((err as Error).message).toContain(";");
+      }
+    });
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Test utilities
@@ -517,6 +672,33 @@ describe("Mapping Tools Integration", () => {
         })
       ).rejects.toThrow('Table "nonexistent" not found');
     });
+
+    it("allows safe filter", async () => {
+      const tool = getTool("create-mapping");
+      const result = (await tool.execute(manager, {} as any, {
+        connection: "test",
+        table: "orders",
+        database: "ecommerce",
+        pattern: "direct",
+        filter: "status = 'completed'",
+      })) as any;
+
+      expect(result.ok).toBe(true);
+      expect(result.mapping.filter).toBe("status = 'completed'");
+    });
+
+    it("rejects SQL injection in filter", async () => {
+      const tool = getTool("create-mapping");
+
+      await expect(
+        tool.execute(manager, {} as any, {
+          connection: "test",
+          table: "orders",
+          database: "ecommerce",
+          filter: "status = 'active'; DROP TABLE users--",
+        })
+      ).rejects.toThrow(SqlInjectionError);
+    });
   });
 
   describe("update-mapping", () => {
@@ -555,6 +737,28 @@ describe("Mapping Tools Integration", () => {
 
       expect(result.ok).toBe(true);
       expect(result.mapping.embeds).toHaveLength(1);
+    });
+
+    it("allows safe filter update", async () => {
+      const tool = getTool("update-mapping");
+      const result = (await tool.execute(manager, {} as any, {
+        mapping: "orders",
+        filter: "total > 50",
+      })) as any;
+
+      expect(result.ok).toBe(true);
+      expect(result.mapping.filter).toBe("total > 50");
+    });
+
+    it("rejects SQL injection in filter update", async () => {
+      const tool = getTool("update-mapping");
+
+      await expect(
+        tool.execute(manager, {} as any, {
+          mapping: "orders",
+          filter: "1=1 UNION SELECT * FROM passwords",
+        })
+      ).rejects.toThrow(SqlInjectionError);
     });
   });
 

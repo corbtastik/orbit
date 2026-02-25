@@ -4,7 +4,7 @@
 
 import type { RdbmsToolDef } from "../types.js";
 import { getMappingStore } from "../utils.js";
-import { transformRow, getPrimaryKeyColumn } from "./helpers.js";
+import { transformRow, getPrimaryKeyColumn, validateSqlFilter } from "./helpers.js";
 
 /**
  * preview-document — Preview sample MongoDB documents based on a mapping.
@@ -56,9 +56,12 @@ export const previewDocumentTool: RdbmsToolDef = {
     const schema = mapping.sourceSchema;
     const table = mapping.sourceTable;
 
+    // Validate filter for SQL injection (defense in depth - also validated at creation)
+    const safeFilter = validateSqlFilter(mapping.filter);
+
     let sql = `SELECT * FROM ${driver.type === "sqlite" ? `"${table}"` : `"${schema ?? "public"}"."${table}"`}`;
-    if (mapping.filter) {
-      sql += ` WHERE ${mapping.filter}`;
+    if (safeFilter) {
+      sql += ` WHERE ${safeFilter}`;
     }
     sql += ` LIMIT ${sampleSize}`;
 

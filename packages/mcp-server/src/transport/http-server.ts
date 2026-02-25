@@ -6,12 +6,12 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { AtlasClient } from "@orbit/core";
-import { SessionManager } from "./session-manager.js";
+import { SessionManager, MaxSessionsExceededError } from "./session-manager.js";
 import { createServer as createMcpServer } from "../server.js";
 
 /** Options for creating an HTTP server. */
@@ -67,73 +67,106 @@ export function createHttpServer(options: HttpServerOptions): HttpServerResult {
 
   // Handle all MCP messages via POST /mcp
   app.post("/mcp", async (req, res) => {
-    // Check for existing session ID in header
-    const existingSessionId = req.headers["mcp-session-id"] as string | undefined;
+    try {
+      // Check for existing session ID in header
+      const existingSessionId = req.headers["mcp-session-id"] as string | undefined;
 
-    if (existingSessionId && transports.has(existingSessionId)) {
-      // Existing session - reuse transport
-      const transport = transports.get(existingSessionId)!;
-      const session = sessionManager.getOrCreate(existingSessionId);
+      if (existingSessionId && transports.has(existingSessionId)) {
+        // Existing session - reuse transport
+        const transport = transports.get(existingSessionId)!;
+        const session = sessionManager.getOrCreate(existingSessionId);
 
-      // Update activity timestamp
-      session.lastActivity = new Date();
+        // Update activity timestamp
+        session.lastActivity = new Date();
 
+        await transport.handleRequest(req, res, req.body);
+        return;
+      }
+
+      // New session - create transport and server
+      const sessionId = existingSessionId ?? randomUUID();
+      const session = sessionManager.getOrCreate(sessionId);
+
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => sessionId,
+      });
+
+      const server = createMcpServer(
+        atlasClient,
+        session.connectionManager,
+        session.rdbmsConnectionManager,
+        { readOnly },
+      );
+
+      // Store for reuse
+      transports.set(sessionId, transport);
+      servers.set(sessionId, server);
+
+      // Clean up on transport close
+      transport.onclose = async () => {
+        transports.delete(sessionId);
+        servers.delete(sessionId);
+        await sessionManager.destroy(sessionId);
+      };
+
+      // Connect server to transport
+      await server.connect(transport);
+
+      // Handle the request
       await transport.handleRequest(req, res, req.body);
-      return;
+    } catch (err: unknown) {
+      // Handle specific errors
+      if (err instanceof MaxSessionsExceededError) {
+        console.error("[MCP HTTP] Session limit exceeded");
+        if (!res.headersSent) {
+          res.status(503).json({
+            error: "Service temporarily unavailable",
+            message: err.message,
+          });
+        }
+        return;
+      }
+
+      // Log and return generic error
+      console.error("[MCP HTTP] POST /mcp error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: "Internal server error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
-
-    // New session - create transport and server
-    const sessionId = existingSessionId ?? randomUUID();
-    const session = sessionManager.getOrCreate(sessionId);
-
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => sessionId,
-    });
-
-    const server = createMcpServer(
-      atlasClient,
-      session.connectionManager,
-      session.rdbmsConnectionManager,
-      { readOnly },
-    );
-
-    // Store for reuse
-    transports.set(sessionId, transport);
-    servers.set(sessionId, server);
-
-    // Clean up on transport close
-    transport.onclose = async () => {
-      transports.delete(sessionId);
-      servers.delete(sessionId);
-      await sessionManager.destroy(sessionId);
-    };
-
-    // Connect server to transport
-    await server.connect(transport);
-
-    // Handle the request
-    await transport.handleRequest(req, res, req.body);
   });
 
   // Handle session cleanup via DELETE /mcp/:sessionId
   app.delete("/mcp/:sessionId", async (req, res) => {
-    const { sessionId } = req.params;
+    try {
+      const { sessionId } = req.params;
 
-    const transport = transports.get(sessionId);
-    const server = servers.get(sessionId);
+      const transport = transports.get(sessionId);
+      const server = servers.get(sessionId);
 
-    if (transport) {
-      await transport.close();
+      if (transport) {
+        await transport.close();
+      }
+      if (server) {
+        await server.close();
+      }
+
+      transports.delete(sessionId);
+      servers.delete(sessionId);
+      await sessionManager.destroy(sessionId);
+
+      res.status(204).end();
+    } catch (err: unknown) {
+      console.error("[MCP HTTP] DELETE /mcp/:sessionId error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: "Internal server error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
-    if (server) {
-      await server.close();
-    }
-
-    transports.delete(sessionId);
-    servers.delete(sessionId);
-    await sessionManager.destroy(sessionId);
-
-    res.status(204).end();
   });
 
   // Health check endpoint
@@ -143,6 +176,18 @@ export function createHttpServer(options: HttpServerOptions): HttpServerResult {
       sessions: sessionManager.size,
       timestamp: new Date().toISOString(),
     });
+  });
+
+  // Global error handling middleware (must be last)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    console.error("[MCP HTTP] Unhandled error:", err);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "Internal server error",
+        message: err.message,
+      });
+    }
   });
 
   let httpServer: ReturnType<Express["listen"]> | null = null;
@@ -167,13 +212,17 @@ export function createHttpServer(options: HttpServerOptions): HttpServerResult {
 
     shutdown: async () => {
       // Close all transports
-      for (const transport of transports.values()) {
-        await transport.close().catch(() => {});
+      for (const [sessionId, transport] of transports) {
+        await transport.close().catch((err) => {
+          console.error(`[MCP HTTP] Failed to close transport ${sessionId}:`, err);
+        });
       }
 
       // Close all servers
-      for (const server of servers.values()) {
-        await server.close().catch(() => {});
+      for (const [sessionId, server] of servers) {
+        await server.close().catch((err) => {
+          console.error(`[MCP HTTP] Failed to close server ${sessionId}:`, err);
+        });
       }
 
       transports.clear();

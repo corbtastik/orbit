@@ -24,7 +24,14 @@ export {
 };
 
 // Re-export helpers for use by other tools
-export { transformRow, applyTransform, camelCase, getPrimaryKeyColumn } from "./helpers.js";
+export {
+  transformRow,
+  applyTransform,
+  camelCase,
+  getPrimaryKeyColumn,
+  validateSqlFilter,
+  SqlInjectionError,
+} from "./helpers.js";
 
 /**
  * All mapping tools.

@@ -13,6 +13,17 @@ import { ConnectionManager, RdbmsConnectionManager } from "./tools/index.js";
 import { createServer } from "./server.js";
 import { createHttpServer } from "./transport/index.js";
 
+// Global error handlers - catch unhandled errors before they crash the server
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[FATAL] Unhandled Promise Rejection at:", promise, "reason:", reason);
+  process.exit(1);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught Exception:", err);
+  process.exit(1);
+});
+
 /**
  * Register MongoDB connections from config.
  */
@@ -123,13 +134,32 @@ async function runStdioMode(config: ResolvedOrbitConfig): Promise<void> {
 
   await server.connect(transport);
 
+  // Track if shutdown is in progress to prevent multiple attempts
+  let isShuttingDown = false;
+
   const shutdown = async () => {
-    await Promise.all([
-      conn.disconnectAll(),
-      rdbmsConn.disconnectAll(),
-    ]);
-    await server.close();
-    process.exit(0);
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    // Set timeout for forced exit
+    const shutdownTimeout = setTimeout(() => {
+      console.error("[FATAL] Shutdown timeout - forcing exit");
+      process.exit(1);
+    }, 10000); // 10 second timeout
+
+    try {
+      await Promise.all([
+        conn.disconnectAll(),
+        rdbmsConn.disconnectAll(),
+      ]);
+      await server.close();
+      clearTimeout(shutdownTimeout);
+      process.exit(0);
+    } catch (err) {
+      console.error("[FATAL] Shutdown error:", err);
+      clearTimeout(shutdownTimeout);
+      process.exit(1);
+    }
   };
 
   process.on("SIGINT", shutdown);
@@ -160,10 +190,30 @@ async function runHttpMode(config: ResolvedOrbitConfig, port: number, host: stri
 
   console.log(`OrbitAI MCP server listening on http://${actualHost}:${actualPort}/mcp`);
 
+  // Track if shutdown is in progress to prevent multiple attempts
+  let isShuttingDown = false;
+
   const shutdown = async () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
     console.log("\nShutting down...");
-    await httpServer.shutdown();
-    process.exit(0);
+
+    // Set timeout for forced exit
+    const shutdownTimeout = setTimeout(() => {
+      console.error("[FATAL] Shutdown timeout - forcing exit");
+      process.exit(1);
+    }, 10000); // 10 second timeout
+
+    try {
+      await httpServer.shutdown();
+      clearTimeout(shutdownTimeout);
+      process.exit(0);
+    } catch (err) {
+      console.error("[FATAL] Shutdown error:", err);
+      clearTimeout(shutdownTimeout);
+      process.exit(1);
+    }
   };
 
   process.on("SIGINT", shutdown);

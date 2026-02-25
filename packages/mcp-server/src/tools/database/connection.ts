@@ -15,7 +15,19 @@
  * operates on a "default" connection.
  */
 
-import { MongoClient, type Db, type Collection } from "mongodb";
+import { MongoClient, type Db, type Collection, type MongoClientOptions } from "mongodb";
+
+/**
+ * Default MongoDB connection pool settings.
+ * These limits prevent connection exhaustion in multi-session scenarios.
+ */
+const DEFAULT_POOL_OPTIONS: MongoClientOptions = {
+  maxPoolSize: 5,           // Max connections per session
+  minPoolSize: 0,           // Don't maintain idle connections
+  maxIdleTimeMS: 30000,     // Close idle connections after 30s
+  connectTimeoutMS: 10000,  // Connection timeout 10s
+  serverSelectionTimeoutMS: 10000,
+};
 
 /** Connection status for list-connections output. */
 export type ConnectionStatus = "connected" | "registered";
@@ -85,8 +97,8 @@ export class ConnectionManager {
       );
     }
 
-    // Establish connection
-    const client = new MongoClient(connStr);
+    // Establish connection with pool limits
+    const client = new MongoClient(connStr, DEFAULT_POOL_OPTIONS);
     await client.connect();
 
     this.clients.set(name, client);

@@ -2,7 +2,7 @@
  * Transport module exports.
  */
 
-export { SessionManager } from "./session-manager.js";
+export { SessionManager, MaxSessionsExceededError } from "./session-manager.js";
 export type { SessionContext, SessionManagerOptions } from "./session-manager.js";
 
 export { createHttpServer } from "./http-server.js";

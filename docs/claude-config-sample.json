@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "orbit": {
+      "command": "node",
+      "args": [
+        "/Users/corbs/dev/github/corbtastik/orbit/packages/mcp-server/dist/index.js"
+      ],
+      "env": {
+        "ATLAS_PRIVATE_KEY": "FAKE",
+        "ATLAS_PUBLIC_KEY": "FAKE",
+        "MONGODB_CONN_LOCAL": "FAKE",
+        "MONGODB_CONN_ATLAS": "FAKE"
+      }
+    }
+  },
+  "preferences": {
+    "coworkScheduledTasksEnabled": false,
+    "sidebarMode": "chat"
+  }
+}
