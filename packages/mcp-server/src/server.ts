@@ -217,10 +217,17 @@ function registerTools(
       return errorResult(message);
     }
 
+    // Merge profile's orgId/groupId as defaults, user-provided params override
+    const pathParams = {
+      ...(client.orgId ? { orgId: client.orgId } : {}),
+      ...(client.groupId ? { groupId: client.groupId } : {}),
+      ...((args.params as Record<string, string>) ?? {}),
+    };
+
     try {
       const result = await dispatch(client, entry.actions, {
         action,
-        pathParams: (args.params as Record<string, string>) ?? {},
+        pathParams,
         query: (args.query as Record<string, string>) ?? {},
         body,
       });
