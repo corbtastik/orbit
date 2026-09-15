@@ -24,6 +24,17 @@ export interface HttpServerOptions {
   atlasManager: AtlasClientManager;
   /** Block database write operations when true. */
   readOnly?: boolean;
+  /**
+   * Host header allowlist for DNS rebinding protection. When omitted (or empty),
+   * the SDK default applies: localhost hostnames only. Set this when binding to
+   * a non-loopback address so clients can reach the server by hostname or LAN IP.
+   */
+  allowedHosts?: string[];
+  /**
+   * CORS origin allowlist for browser-based clients. Omitted (or empty) leaves
+   * CORS off, which is correct for Node/Electron clients. "*" allows any origin.
+   */
+  corsOrigins?: string[];
 }
 
 /** Result from createHttpServer. */
@@ -36,6 +47,56 @@ export interface HttpServerResult {
   listen: () => Promise<{ port: number; host: string }>;
   /** Graceful shutdown - closes all connections and sessions. */
   shutdown: () => Promise<void>;
+}
+
+/** Response headers a browser MCP client must be able to read. */
+const EXPOSED_HEADERS = "mcp-session-id, mcp-protocol-version";
+
+/** Request headers allowed on preflight when the client does not ask for specific ones. */
+const DEFAULT_ALLOWED_HEADERS =
+  "content-type, accept, authorization, mcp-session-id, mcp-protocol-version, last-event-id";
+
+/**
+ * Minimal CORS middleware for the MCP endpoints.
+ *
+ * Hand-rolled rather than pulling in the `cors` package: the policy here is
+ * narrow (an explicit origin allowlist, plus exposing `mcp-session-id` so a
+ * browser client can carry the session across requests).
+ *
+ * Note: this runs *after* the SDK's Host header validation, so a request
+ * rejected for DNS rebinding returns 403 without CORS headers and surfaces in
+ * the browser as a CORS error rather than as the 403 it is.
+ */
+export function createCorsMiddleware(allowedOrigins: string[]) {
+  const allowAny = allowedOrigins.includes("*");
+  const allowed = new Set(allowedOrigins);
+
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const origin = req.headers.origin;
+    const originAllowed = origin !== undefined && (allowAny || allowed.has(origin));
+
+    if (originAllowed) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Expose-Headers", EXPOSED_HEADERS);
+    }
+
+    if (req.method === "OPTIONS") {
+      if (originAllowed) {
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+        res.setHeader(
+          "Access-Control-Allow-Headers",
+          req.headers["access-control-request-headers"] ?? DEFAULT_ALLOWED_HEADERS,
+        );
+        res.setHeader("Access-Control-Max-Age", "86400");
+      }
+      // Preflight never reaches a route handler, allowed or not.
+      res.status(204).end();
+      return;
+    }
+
+    next();
+  };
 }
 
 /**
@@ -53,6 +114,8 @@ export function createHttpServer(options: HttpServerOptions): HttpServerResult {
     host = "127.0.0.1",
     atlasManager,
     readOnly = false,
+    allowedHosts = [],
+    corsOrigins = [],
   } = options;
 
   // Session manager for per-session ConnectionManager isolation
@@ -62,8 +125,17 @@ export function createHttpServer(options: HttpServerOptions): HttpServerResult {
   const transports = new Map<string, StreamableHTTPServerTransport>();
   const servers = new Map<string, Server>();
 
-  // Create Express app with DNS rebinding protection
-  const app = createMcpExpressApp({ host });
+  // Create Express app with DNS rebinding protection.
+  // Passing allowedHosts overrides the SDK's localhost-only default.
+  const app =
+    allowedHosts.length > 0
+      ? createMcpExpressApp({ host, allowedHosts })
+      : createMcpExpressApp({ host });
+
+  // Opt-in CORS, registered before the routes so preflight is handled.
+  if (corsOrigins.length > 0) {
+    app.use(createCorsMiddleware(corsOrigins));
+  }
 
   // Handle all MCP messages via POST /mcp
   app.post("/mcp", async (req, res) => {

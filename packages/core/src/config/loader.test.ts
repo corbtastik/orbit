@@ -203,6 +203,59 @@ describe("loadConfig", () => {
       expect(config.server.host).toBe("0.0.0.0");
     });
 
+    it("defaults allowedHosts and corsOrigins to empty arrays", () => {
+      const config = loadConfig();
+
+      expect(config.server.allowedHosts).toEqual([]);
+      expect(config.server.corsOrigins).toEqual([]);
+    });
+
+    it("loads allowedHosts and corsOrigins arrays from config file", () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        server: {
+          allowedHosts: ["localhost", "orbit.local"],
+          corsOrigins: ["http://localhost:5173"],
+        },
+      }));
+
+      const config = loadConfig();
+
+      expect(config.server.allowedHosts).toEqual(["localhost", "orbit.local"]);
+      expect(config.server.corsOrigins).toEqual(["http://localhost:5173"]);
+    });
+
+    it("parses comma-separated allowedHosts and corsOrigins env vars", () => {
+      process.env.ORBIT_MCP_ALLOWED_HOSTS = "localhost, orbit.local ,";
+      process.env.ORBIT_MCP_CORS_ORIGINS = "http://localhost:5173,http://localhost:3000";
+
+      const config = loadConfig();
+
+      expect(config.server.allowedHosts).toEqual(["localhost", "orbit.local"]);
+      expect(config.server.corsOrigins).toEqual([
+        "http://localhost:5173",
+        "http://localhost:3000",
+      ]);
+    });
+
+    it("env vars override config file for allowedHosts and corsOrigins", () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        server: {
+          allowedHosts: ["from-file"],
+          corsOrigins: ["http://from-file"],
+        },
+      }));
+
+      process.env.ORBIT_MCP_ALLOWED_HOSTS = "from-env";
+      process.env.ORBIT_MCP_CORS_ORIGINS = "http://from-env";
+
+      const config = loadConfig();
+
+      expect(config.server.allowedHosts).toEqual(["from-env"]);
+      expect(config.server.corsOrigins).toEqual(["http://from-env"]);
+    });
+
     it("loads LLM settings from config file", () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify({

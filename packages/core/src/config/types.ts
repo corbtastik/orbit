@@ -79,6 +79,16 @@ export interface ServerConfigSection {
   port?: number;
   /** HTTP bind address. Default: 127.0.0.1 */
   host?: string;
+  /**
+   * Host header allowlist for DNS rebinding protection.
+   * Empty (default) keeps the SDK behaviour: localhost hostnames only.
+   */
+  allowedHosts?: string[];
+  /**
+   * CORS origin allowlist for browser-based clients.
+   * Empty (default) disables CORS entirely. "*" allows any origin.
+   */
+  corsOrigins?: string[];
 }
 
 /**
@@ -199,6 +209,8 @@ export const ENV = {
   ORBIT_MCP_HTTP: "ORBIT_MCP_HTTP",
   ORBIT_MCP_PORT: "ORBIT_MCP_PORT",
   ORBIT_MCP_HOST: "ORBIT_MCP_HOST",
+  ORBIT_MCP_ALLOWED_HOSTS: "ORBIT_MCP_ALLOWED_HOSTS",
+  ORBIT_MCP_CORS_ORIGINS: "ORBIT_MCP_CORS_ORIGINS",
 
   // LLM provider
   ORBIT_LLM_PROVIDER: "ORBIT_LLM_PROVIDER",
@@ -230,6 +242,8 @@ export const DEFAULTS = {
     http: false,
     port: 3600,
     host: "127.0.0.1",
+    allowedHosts: [] as string[],
+    corsOrigins: [] as string[],
   },
   llm: {
     provider: "anthropic" as LlmProviderName,

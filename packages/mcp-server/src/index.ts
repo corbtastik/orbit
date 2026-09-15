@@ -42,17 +42,28 @@ function registerConnections(
 function parseCliArgs() {
   const { values } = parseArgs({
     options: {
-      http: { type: "boolean", default: false },
+      // No `default` here: the value must stay undefined when the flag is
+      // absent so `args.http ?? config.server.http` can fall through to the
+      // config file. A default of `false` silently overrides the file.
+      http: { type: "boolean" },
+      stdio: { type: "boolean" },
       port: { type: "string" },
       host: { type: "string" },
+      "allowed-hosts": { type: "string" },
+      "cors-origin": { type: "string", multiple: true },
       help: { type: "boolean", short: "h", default: false },
     },
   });
 
   return {
     http: values.http,
+    stdio: values.stdio ?? false,
     port: values.port ? parseInt(values.port, 10) : undefined,
     host: values.host,
+    allowedHosts: values["allowed-hosts"]
+      ? values["allowed-hosts"].split(",").map((h) => h.trim()).filter(Boolean)
+      : undefined,
+    corsOrigins: values["cors-origin"],
     help: values.help ?? false,
   };
 }
@@ -67,10 +78,16 @@ USAGE
   orbit-mcp-server --http       Start in HTTP mode
 
 OPTIONS
-  --http              Run in HTTP mode (StreamableHTTP transport)
-  --port <port>       HTTP port (default: 3600)
-  --host <host>       HTTP host (default: 127.0.0.1)
-  -h, --help          Show this help message
+  --http                  Run in HTTP mode (StreamableHTTP transport)
+  --stdio                 Force stdio mode (overrides config/env HTTP setting)
+  --port <port>           HTTP port (default: 3600)
+  --host <host>           HTTP host (default: 127.0.0.1)
+  --allowed-hosts <list>  Comma-separated Host header allowlist for DNS
+                          rebinding protection. Required when binding to a
+                          non-loopback address. Default: localhost only.
+  --cors-origin <origin>  Allow a browser origin (repeatable, or "*" for any).
+                          Omitted means CORS stays off.
+  -h, --help              Show this help message
 
 CONFIG FILE
   ${CONFIG_FILE}
@@ -117,6 +134,8 @@ ENVIRONMENT (overrides config file)
   ORBIT_MCP_HTTP=true           Enable HTTP mode
   ORBIT_MCP_PORT=<port>         HTTP port (default: 3600)
   ORBIT_MCP_HOST=<host>         HTTP host (default: 127.0.0.1)
+  ORBIT_MCP_ALLOWED_HOSTS       Comma-separated Host header allowlist
+  ORBIT_MCP_CORS_ORIGINS        Comma-separated CORS origin allowlist
   ORBIT_READ_ONLY=true          Block database write operations
   MONGODB_CONNECTION_STRING     Default MongoDB connection string
   MONGODB_CONN_<NAME>           Named MongoDB connection strings
@@ -181,7 +200,13 @@ async function runStdioMode(config: ResolvedOrbitConfig): Promise<void> {
 /**
  * Start the server in HTTP mode (for CLI and other HTTP clients).
  */
-async function runHttpMode(config: ResolvedOrbitConfig, port: number, host: string): Promise<void> {
+async function runHttpMode(
+  config: ResolvedOrbitConfig,
+  port: number,
+  host: string,
+  allowedHosts: string[],
+  corsOrigins: string[],
+): Promise<void> {
   // Create Atlas client manager with all configured profiles
   const atlasManager = new AtlasClientManager(config);
 
@@ -190,6 +215,8 @@ async function runHttpMode(config: ResolvedOrbitConfig, port: number, host: stri
     host,
     atlasManager,
     readOnly: config.server.readOnly,
+    allowedHosts,
+    corsOrigins,
   });
 
   const { port: actualPort, host: actualHost } = await httpServer.listen();
@@ -283,13 +310,16 @@ Get your API keys from: https://cloud.mongodb.com/v2#/org/.../access/apiKeys
     console.error(`Atlas profiles configured: ${profiles.join(", ")} (default: ${config.atlas.default})`);
   }
 
-  // Determine mode: CLI flag overrides config file
-  const httpMode = args.http ?? config.server.http;
+  // Determine mode: CLI flags override env, which overrides the config file.
+  // --stdio is an explicit opt-out for when the config/env enables HTTP.
+  const httpMode = args.stdio ? false : (args.http ?? config.server.http);
   const port = args.port ?? config.server.port;
   const host = args.host ?? config.server.host;
+  const allowedHosts = args.allowedHosts ?? config.server.allowedHosts;
+  const corsOrigins = args.corsOrigins ?? config.server.corsOrigins;
 
   if (httpMode) {
-    await runHttpMode(config, port, host);
+    await runHttpMode(config, port, host, allowedHosts, corsOrigins);
   } else {
     await runStdioMode(config);
   }

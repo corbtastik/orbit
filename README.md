@@ -150,6 +150,14 @@ Configuration priority: **CLI flags > Environment variables > Config file > Defa
     "maxTokens": 4096,
     "temperature": 0
   },
+  "server": {
+    "http": false,
+    "port": 3600,
+    "host": "127.0.0.1",
+    "readOnly": false,
+    "allowedHosts": [],
+    "corsOrigins": []
+  },
   "mcp": {
     "url": "http://127.0.0.1:3600/mcp",
     "forceStdio": false,
@@ -207,6 +215,8 @@ Configuration priority: **CLI flags > Environment variables > Config file > Defa
 | `ORBIT_MCP_HTTP` | Start MCP server in HTTP mode | `false` |
 | `ORBIT_MCP_PORT` | HTTP server port | `3600` |
 | `ORBIT_MCP_HOST` | HTTP server host | `127.0.0.1` |
+| `ORBIT_MCP_ALLOWED_HOSTS` | Comma-separated `Host` header allowlist | localhost only |
+| `ORBIT_MCP_CORS_ORIGINS` | Comma-separated CORS origin allowlist (`*` for any) | CORS disabled |
 | `ORBIT_MCP_URL` | MCP server URL (for CLI) | `http://127.0.0.1:3600/mcp` |
 | `ORBIT_MCP_STDIO` | Force CLI to use stdio transport | `false` |
 | `ORBIT_MCP_HTTP_TIMEOUT` | HTTP connection timeout (ms) | `2000` |
@@ -248,6 +258,67 @@ Or with flags:
 ```bash
 node packages/mcp-server/dist/index.js --http --port 3600
 ```
+
+Or set `server.http: true` in `~/.orbit-ai/config.json`. Use `--stdio` to force stdio
+mode when the config file or environment enables HTTP.
+
+### Calling the Server From Another Local App
+
+The HTTP server speaks MCP over Streamable HTTP, not REST:
+
+| Route | Purpose |
+|-------|---------|
+| `POST /mcp` | All MCP traffic (initialize, tools/list, tools/call) |
+| `DELETE /mcp/:sessionId` | Tear down a session and its database connections |
+| `GET /health` | `{ status, sessions, timestamp }` |
+
+From a Node or Electron app, use the MCP SDK client:
+
+```js
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+
+const client = new Client({ name: "my-app", version: "1.0.0" });
+await client.connect(new StreamableHTTPClientTransport(new URL("http://127.0.0.1:3600/mcp")));
+
+const { tools } = await client.listTools();
+```
+
+Calling raw HTTP requires `Accept: application/json, text/event-stream`, an
+`initialize` handshake, and echoing the returned `mcp-session-id` header on every
+subsequent request.
+
+#### Browser Clients (CORS)
+
+CORS is **off by default**, which is correct for Node, Electron, and CLI clients.
+Browser-based apps need an explicit origin allowlist:
+
+```bash
+node packages/mcp-server/dist/index.js --http --cors-origin http://localhost:5173
+```
+
+The allowlist echoes matching origins and exposes `mcp-session-id` so a browser
+client can carry the session across requests. `--cors-origin` is repeatable, and
+`*` allows any origin.
+
+#### Non-Loopback Binding (allowedHosts)
+
+Binding to `127.0.0.1`, `localhost`, or `::1` applies DNS rebinding protection:
+any request whose `Host` hostname is not one of those three gets a 403. To reach
+the server by another hostname or LAN IP, supply an allowlist:
+
+```bash
+node packages/mcp-server/dist/index.js --http --host 0.0.0.0 \
+  --allowed-hosts orbit.local,127.0.0.1,localhost
+```
+
+`--allowed-hosts` **replaces** the default list rather than extending it, so
+include `localhost` and `127.0.0.1` if you still want them.
+
+> **The server has no authentication.** Anything that can reach it drives Atlas
+> with your API keys. Keep the bind on loopback unless you add auth in front.
+> Note also that `readOnly` gates database and RDBMS tools only — Atlas admin
+> tools such as cluster deletion are not covered by it.
 
 ### Claude Desktop Configuration
 

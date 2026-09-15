@@ -62,6 +62,16 @@ function toInt(value: string | number | undefined, fallback: number): number {
 }
 
 /**
+ * Parse a string list from a comma-separated string or an array.
+ * Entries are trimmed and empty entries dropped.
+ */
+function toStringList(value: string | string[] | undefined, fallback: string[]): string[] {
+  if (value === undefined) return fallback;
+  const parts = Array.isArray(value) ? value : value.split(",");
+  return parts.map((v) => v.trim()).filter((v) => v.length > 0);
+}
+
+/**
  * Scan environment for MONGODB_CONN_* variables.
  * Returns a map of connection name -> connection string.
  */
@@ -282,6 +292,14 @@ export function loadConfig(configPath?: string): ResolvedOrbitConfig {
         process.env[ENV.ORBIT_MCP_HOST] ??
         file.server?.host ??
         DEFAULTS.server.host,
+      allowedHosts: toStringList(
+        process.env[ENV.ORBIT_MCP_ALLOWED_HOSTS] ?? file.server?.allowedHosts,
+        DEFAULTS.server.allowedHosts,
+      ),
+      corsOrigins: toStringList(
+        process.env[ENV.ORBIT_MCP_CORS_ORIGINS] ?? file.server?.corsOrigins,
+        DEFAULTS.server.corsOrigins,
+      ),
     },
 
     llm: {
