@@ -103,25 +103,32 @@ export ANTHROPIC_API_KEY="your-key"
 
 ### 3. Run
 
-**Option A: CLI with stdio (single process)**
-
+Terminal 1 — start the MCP server:
 ```bash
-node apps/cli/dist/index.js
+./start-server.sh
 ```
 
-**Option B: CLI with HTTP server (recommended for development)**
-
-Terminal 1 — Start the MCP server:
+Terminal 2 — start the CLI:
 ```bash
-ORBIT_MCP_HTTP=true node packages/mcp-server/dist/index.js
+./start-cli.sh
 ```
 
-Terminal 2 — Start the CLI:
+The CLI auto-connects over HTTP when the server is running, and falls back to
+spawning the server over stdio when it is not — so `./start-cli.sh` on its own
+works too.
+
+Both scripts build on first run, accept `--build` to force a rebuild, and pass
+any other flags through:
+
 ```bash
-node apps/cli/dist/index.js
+./start-server.sh --port 4000
+./start-server.sh --cors-origin http://localhost:5173
+./start-cli.sh "list my clusters"
+./start-cli.sh -v --provider google
 ```
 
-The CLI auto-connects via HTTP when the server is running.
+They load `.env` via `--env-file`, which is what makes `MONGODB_CONN_*`
+connections visible to the server.
 
 ---
 
