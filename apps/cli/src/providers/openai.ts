@@ -13,7 +13,8 @@ import type {
  */
 export interface OpenAiProviderOptions {
   apiKey: string;
-  model?: string;
+  /** Resolved by the config layer; providers carry no model fallbacks. */
+  model: string;
   baseUrl?: string;
   name?: string;
 }
@@ -35,7 +36,7 @@ export class OpenAiProvider implements LlmProvider {
       apiKey: opts.apiKey,
       ...(opts.baseUrl ? { baseURL: opts.baseUrl } : {}),
     });
-    this.defaultModel = opts.model ?? "gpt-4o";
+    this.defaultModel = opts.model;
   }
 
   async *chat(request: ChatRequest): AsyncGenerator<ChatEvent> {

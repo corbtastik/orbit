@@ -105,7 +105,11 @@ export interface LlmConfigSection {
   baseUrl?: string;
   /** Max response tokens. Default: 4096 */
   maxTokens?: number;
-  /** Sampling temperature. Default: 0 */
+  /**
+   * Sampling temperature. No default — left unset unless configured.
+   * Current Anthropic models reject it, so the Anthropic provider omits it
+   * from the request when undefined.
+   */
   temperature?: number;
 }
 
@@ -173,9 +177,13 @@ export interface ResolvedOrbitConfig {
     connections: Record<string, string>;
   };
   server: Required<ServerConfigSection>;
-  llm: Required<Omit<LlmConfigSection, "apiKey" | "baseUrl">> & {
+  llm: Required<
+    Omit<LlmConfigSection, "apiKey" | "baseUrl" | "temperature">
+  > & {
     apiKey?: string;
     baseUrl?: string;
+    /** Stays undefined unless explicitly set in the config file. */
+    temperature?: number;
   };
   mcp: Required<McpConfigSection>;
   defaults: Required<DefaultsConfigSection>;
@@ -247,9 +255,7 @@ export const DEFAULTS = {
   },
   llm: {
     provider: "anthropic" as LlmProviderName,
-    model: "claude-sonnet-4-20250514",
     maxTokens: 4096,
-    temperature: 0,
   },
   mcp: {
     url: "http://127.0.0.1:3600/mcp",
@@ -261,9 +267,14 @@ export const DEFAULTS = {
     maxToolTurns: 10,
     verbose: false,
   },
-  /** Default model per provider. */
+  /**
+   * Default model per provider — the single source of truth.
+   *
+   * Provider classes deliberately have no fallback models of their own; the
+   * resolved config always supplies one. Update models here and nowhere else.
+   */
   providerModels: {
-    anthropic: "claude-sonnet-4-20250514",
+    anthropic: "claude-opus-5",
     openai: "gpt-4o",
     google: "gemini-2.5-flash",
     ollama: "llama3.1",

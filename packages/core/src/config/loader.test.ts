@@ -677,7 +677,7 @@ describe("hasLlmConfig", () => {
       llm: {
         provider: "anthropic",
         apiKey: "test-key",
-        model: "claude-sonnet-4-20250514",
+        model: "test-model",
         maxTokens: 4096,
         temperature: 0,
       },
@@ -690,7 +690,7 @@ describe("hasLlmConfig", () => {
     const config = {
       llm: {
         provider: "anthropic",
-        model: "claude-sonnet-4-20250514",
+        model: "test-model",
         maxTokens: 4096,
         temperature: 0,
       },

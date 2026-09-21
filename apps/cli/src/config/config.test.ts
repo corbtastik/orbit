@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { loadConfigFile } from "@orbit/core";
+import { loadConfigFile, DEFAULTS } from "@orbit/core";
 import { resolveCliConfig } from "./config.js";
 
 // Prevent real ~/.orbit-ai/config.json from leaking into tests
@@ -92,9 +92,10 @@ describe("resolveCliConfig", () => {
   it("returns defaults when no flags, env, or file config", () => {
     const config = resolveCliConfig();
     expect(config.llm.provider).toBe("anthropic");
-    expect(config.llm.model).toBe("claude-sonnet-4-20250514");
+    expect(config.llm.model).toBe(DEFAULTS.providerModels.anthropic);
     expect(config.llm.maxTokens).toBe(4096);
-    expect(config.llm.temperature).toBe(0);
+    // No default — current Anthropic models reject `temperature` outright.
+    expect(config.llm.temperature).toBeUndefined();
     expect(config.defaults.verbose).toBe(false);
     expect(config.defaults.maxToolTurns).toBe(10);
     expect(config.atlas.baseUrl).toBe("https://cloud.mongodb.com");
@@ -174,15 +175,15 @@ describe("resolveCliConfig", () => {
 
   it("uses provider-specific default model", () => {
     const openai = resolveCliConfig({ provider: "openai" });
-    expect(openai.llm.model).toBe("gpt-4o");
+    expect(openai.llm.model).toBe(DEFAULTS.providerModels.openai);
 
     const google = resolveCliConfig({ provider: "google" });
-    expect(google.llm.model).toBe("gemini-2.5-flash");
+    expect(google.llm.model).toBe(DEFAULTS.providerModels.google);
 
     const ollama = resolveCliConfig({ provider: "ollama" });
-    expect(ollama.llm.model).toBe("llama3.1");
+    expect(ollama.llm.model).toBe(DEFAULTS.providerModels.ollama);
 
     const anthropic = resolveCliConfig({ provider: "anthropic" });
-    expect(anthropic.llm.model).toBe("claude-sonnet-4-20250514");
+    expect(anthropic.llm.model).toBe(DEFAULTS.providerModels.anthropic);
   });
 });

@@ -22,7 +22,7 @@ export class GoogleProvider implements LlmProvider {
   private apiKey: string;
   private defaultModel: string;
 
-  constructor(apiKey: string, model = "gemini-2.0-flash") {
+  constructor(apiKey: string, model: string) {
     this.apiKey = apiKey;
     this.defaultModel = model;
   }

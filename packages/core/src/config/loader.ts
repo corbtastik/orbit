@@ -205,10 +205,31 @@ function resolveAtlasProfiles(
   }
 
   // 4. Determine default profile name
-  const defaultProfileName =
-    process.env[ENV.ATLAS_DEFAULT_PROFILE] ??
-    file.atlas?.default ??
-    "default";
+  const requestedProfileName =
+    process.env[ENV.ATLAS_DEFAULT_PROFILE] ?? file.atlas?.default;
+  const defaultProfileName = requestedProfileName ?? "default";
+
+  // A name that resolves to nothing otherwise surfaces only as blank Atlas
+  // fields, with no hint that the pointer is the problem. Warn only when a
+  // name was asked for explicitly and profiles exist — having no profiles at
+  // all is just the unconfigured state.
+  //
+  // Deliberately no fallback to another profile: substituting credentials
+  // would risk running Atlas operations against the wrong org silently.
+  const available = Object.keys(profiles);
+  if (
+    requestedProfileName &&
+    available.length > 0 &&
+    !profiles[requestedProfileName]
+  ) {
+    console.warn(
+      `Warning: Atlas profile "${requestedProfileName}" is not defined. ` +
+        `Available profiles: ${available.join(", ")}.`,
+    );
+    console.warn(
+      "Atlas credentials will be unavailable until this is corrected.",
+    );
+  }
 
   return {
     default: defaultProfileName,
@@ -308,8 +329,7 @@ export function loadConfig(configPath?: string): ResolvedOrbitConfig {
       model:
         process.env[ENV.ORBIT_LLM_MODEL] ??
         file.llm?.model ??
-        DEFAULTS.providerModels[provider] ??
-        DEFAULTS.llm.model,
+        DEFAULTS.providerModels[provider],
       baseUrl:
         process.env[ENV.ORBIT_LLM_BASE_URL] ??
         file.llm?.baseUrl,
@@ -317,7 +337,7 @@ export function loadConfig(configPath?: string): ResolvedOrbitConfig {
         process.env[ENV.ORBIT_LLM_MAX_TOKENS] ?? file.llm?.maxTokens,
         DEFAULTS.llm.maxTokens,
       ),
-      temperature: file.llm?.temperature ?? DEFAULTS.llm.temperature,
+      temperature: file.llm?.temperature,
     },
 
     mcp: {

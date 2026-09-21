@@ -9,10 +9,10 @@ import { OpenAiProvider } from "./openai.js";
  * Requires Ollama running locally: https://ollama.ai
  */
 export class OllamaProvider extends OpenAiProvider {
-  constructor(model?: string, baseUrl?: string) {
+  constructor(model: string, baseUrl?: string) {
     super({
       apiKey: "ollama", // Ollama doesn't require an API key
-      model: model ?? "llama3.1",
+      model,
       baseUrl: baseUrl ?? "http://localhost:11434/v1",
       name: "ollama",
     });

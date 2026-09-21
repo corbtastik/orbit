@@ -16,7 +16,7 @@ export class AnthropicProvider implements LlmProvider {
   private client: Anthropic;
   private defaultModel: string;
 
-  constructor(apiKey: string, model = "claude-sonnet-4-20250514") {
+  constructor(apiKey: string, model: string) {
     this.client = new Anthropic({ apiKey });
     this.defaultModel = model;
   }
@@ -29,7 +29,11 @@ export class AnthropicProvider implements LlmProvider {
         {
           model: request.model ?? this.defaultModel,
           max_tokens: request.maxTokens ?? 4096,
-          temperature: request.temperature ?? 0,
+          // Sampling params are removed on current models (Sonnet 5, Opus 5,
+          // the 4.6+ family) and return 400. Only send when explicitly set.
+          ...(request.temperature !== undefined
+            ? { temperature: request.temperature }
+            : {}),
           system: request.system,
           messages,
           tools: request.tools.map((t) => ({

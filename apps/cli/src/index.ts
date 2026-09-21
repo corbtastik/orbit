@@ -68,7 +68,7 @@ ${colors.bold("USAGE")}
 
 ${colors.bold("OPTIONS")}
   -p, --provider <name>   LLM provider: anthropic, openai, google, ollama
-  -m, --model <model>     Model name (e.g. claude-sonnet-4-20250514)
+  -m, --model <model>     Model name (e.g. claude-opus-5)
       --api-key <key>     API key for the LLM provider
   -v, --verbose           Show tool details and token usage
       --max-tokens <n>    Max response tokens (default: 4096)

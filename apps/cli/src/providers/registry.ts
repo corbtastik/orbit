@@ -10,7 +10,7 @@ import { OllamaProvider } from "./ollama.js";
 export function createProvider(
   provider: string,
   apiKey: string | undefined,
-  model?: string,
+  model: string,
   baseUrl?: string,
 ): LlmProvider {
   switch (provider) {

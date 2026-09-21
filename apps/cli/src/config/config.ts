@@ -33,7 +33,8 @@ export interface CliConfig {
   llm: {
     provider: LlmProviderName;
     apiKey?: string;
-    model?: string;
+    /** Always resolved — see DEFAULTS.providerModels in @orbit/core. */
+    model: string;
     baseUrl?: string;
     maxTokens?: number;
     temperature?: number;
