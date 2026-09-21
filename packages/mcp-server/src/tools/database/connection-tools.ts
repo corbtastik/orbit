@@ -50,9 +50,10 @@ const connectTool: DatabaseToolDef = {
   name: "connect",
   description:
     "Connect to a MongoDB instance. " +
-    "Use a registered connection name (from MONGODB_CONN_* env vars) or " +
-    "provide a new name with a connectionString. " +
-    "Supports mongodb:// and mongodb+srv:// URIs.",
+    "Prefer a registered connection name (from MONGODB_CONN_* env vars) — call " +
+    "list-connections first and connect by name, with no connectionString, so the " +
+    "stored credentials are used. Only supply a connectionString to create a " +
+    "genuinely new connection. Supports mongodb:// and mongodb+srv:// URIs.",
   operationType: "connection",
   inputSchema: {
     type: "object",
@@ -67,7 +68,9 @@ const connectTool: DatabaseToolDef = {
         type: "string",
         description:
           "MongoDB connection string (mongodb:// or mongodb+srv://). " +
-          "Required when creating a new connection, optional when connecting to a registered one. " +
+          "Required only when creating a new connection; omit it for a registered name, " +
+          "which already has working credentials. Never reconstruct one from list-connections " +
+          "output or from Atlas cluster metadata — neither includes a password. " +
           "Example: mongodb://localhost:27017 or mongodb+srv://user:pass@cluster.mongodb.net",
       },
     },
@@ -90,11 +93,7 @@ const connectTool: DatabaseToolDef = {
     return {
       ok: true,
       message: `Connected to MongoDB as "${name}".`,
-      connection: {
-        name,
-        status: "connected",
-        uri: conn.listConnections().find((c) => c.name === name)?.uri,
-      },
+      connection: conn.listConnections().find((c) => c.name === name),
     };
   },
 };

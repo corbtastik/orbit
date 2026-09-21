@@ -27,6 +27,15 @@ export interface SessionManagerOptions {
   cleanupIntervalMs?: number;
   /** Maximum number of concurrent sessions. Default: 1000. */
   maxSessions?: number;
+  /**
+   * Named MongoDB connection strings (from MONGODB_CONN_* env vars and the
+   * config file) to register into every new session.
+   *
+   * Sessions get their own ConnectionManager for isolation, which means they
+   * start empty unless seeded here — without this, list-connections reports
+   * nothing over HTTP even though stdio mode sees the same connections fine.
+   */
+  mongoConnections?: Record<string, string>;
 }
 
 /**
@@ -49,11 +58,13 @@ export class SessionManager {
   private readonly idleTimeoutMs: number;
   private readonly cleanupIntervalMs: number;
   private readonly maxSessions: number;
+  private readonly mongoConnections: Record<string, string>;
 
   constructor(options: SessionManagerOptions = {}) {
     this.idleTimeoutMs = options.idleTimeoutMs ?? 30 * 60 * 1000; // 30 min
     this.cleanupIntervalMs = options.cleanupIntervalMs ?? 60 * 1000; // 1 min
     this.maxSessions = options.maxSessions ?? 1000; // 1000 sessions
+    this.mongoConnections = options.mongoConnections ?? {};
 
     // Start periodic cleanup
     this.startCleanup();
@@ -82,9 +93,17 @@ export class SessionManager {
     }
 
     // Create new session with both connection managers
+    const connectionManager = new ConnectionManager();
+
+    // Seed the session with the configured named connections. Registration is
+    // lazy — the driver only dials on first use — so this stays synchronous.
+    for (const [connName, connString] of Object.entries(this.mongoConnections)) {
+      connectionManager.registerConnection(connName, connString);
+    }
+
     session = {
       sessionId,
-      connectionManager: new ConnectionManager(),
+      connectionManager,
       rdbmsConnectionManager: new RdbmsConnectionManager(),
       createdAt: new Date(),
       lastActivity: new Date(),

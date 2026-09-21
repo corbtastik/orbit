@@ -255,6 +255,30 @@ function registerTools(
  * - If specified, validates it exists and auto-connects if registered
  * - If not specified, uses backward-compat default connection behavior
  */
+/**
+ * Explain why a tool call has no connection to run against.
+ *
+ * The old message said "use the connect tool first" even when the caller had
+ * just connected successfully — the real problem was that only a connection
+ * literally named "default" counted. Name what is actually available instead.
+ */
+function describeNoConnection(conn: ConnectionManager): string {
+  const names = conn.listConnections().map((c) => c.name);
+
+  if (names.length === 0) {
+    return (
+      "No MongoDB connections are configured. Use the connect tool with a name and " +
+      "connectionString, or set MONGODB_CONN_* environment variables."
+    );
+  }
+
+  return (
+    "No active MongoDB connection for this session. " +
+    `Use the connect tool to connect to one of: ${names.join(", ")} — ` +
+    'or pass connection: "<name>" on this call.'
+  );
+}
+
 async function handleDatabaseTool(
   tool: DatabaseToolDef,
   conn: ConnectionManager | undefined,
@@ -276,10 +300,14 @@ async function handleDatabaseTool(
   }
 
   // Extract connection name from args (used by multi-connection support)
-  const connectionName = args.connection as string | undefined;
+  const requestedConnection = args.connection as string | undefined;
 
   // Non-connection tools require an active connection
   if (tool.operationType !== "connection") {
+    // An explicit name wins; otherwise fall back to the connection this
+    // session last connected to, and only then to the legacy "default".
+    const connectionName = requestedConnection ?? conn.getActiveConnection();
+
     if (connectionName) {
       // Named connection requested — validate it exists
       if (!conn.hasConnection(connectionName)) {
@@ -296,12 +324,13 @@ async function handleDatabaseTool(
           return errorResult(`Failed to connect "${connectionName}": ${message}`);
         }
       }
+      // Tools read the name off args, so a resolved fallback has to land there
+      // too — otherwise they would quietly operate on "default" instead.
+      args.connection = connectionName;
     } else {
-      // No connection specified — require default connection (backward compat)
+      // Nothing explicit and nothing active — the legacy "default" path.
       if (!conn.isConnected()) {
-        return errorResult(
-          "Not connected to MongoDB. Use the connect tool first, or specify a connection parameter.",
-        );
+        return errorResult(describeNoConnection(conn));
       }
     }
   }

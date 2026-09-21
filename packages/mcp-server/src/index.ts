@@ -26,14 +26,36 @@ process.on("uncaughtException", (err) => {
 });
 
 /**
+ * Build the map of named MongoDB connections from config.
+ *
+ * Shared by both transports on purpose: stdio and HTTP previously seeded
+ * connections independently, and HTTP simply never did it — leaving
+ * list-connections empty for every HTTP client. One source, one behaviour.
+ */
+function mongoConnectionRegistry(
+  config: ResolvedOrbitConfig,
+): Record<string, string> {
+  const registry: Record<string, string> = { ...config.mongodb.connections };
+
+  // The legacy MONGODB_CONNECTION_STRING is a connection string, not a name;
+  // it surfaces as the "default" connection.
+  if (config.mongodb.default) {
+    registry.default = config.mongodb.default;
+  }
+
+  return registry;
+}
+
+/**
  * Register MongoDB connections from config.
  */
 function registerConnections(
   conn: ConnectionManager,
   config: ResolvedOrbitConfig,
 ): void {
-  // Register named connections from config file and env vars
-  for (const [name, connString] of Object.entries(config.mongodb.connections)) {
+  for (const [name, connString] of Object.entries(
+    mongoConnectionRegistry(config),
+  )) {
     conn.registerConnection(name, connString);
   }
 }
@@ -217,6 +239,7 @@ async function runHttpMode(
     readOnly: config.server.readOnly,
     allowedHosts,
     corsOrigins,
+    mongoConnections: mongoConnectionRegistry(config),
   });
 
   const { port: actualPort, host: actualHost } = await httpServer.listen();

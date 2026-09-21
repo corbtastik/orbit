@@ -35,6 +35,11 @@ export interface HttpServerOptions {
    * CORS off, which is correct for Node/Electron clients. "*" allows any origin.
    */
   corsOrigins?: string[];
+  /**
+   * Named MongoDB connection strings to register into every new session, so
+   * HTTP clients see the same connections stdio clients do.
+   */
+  mongoConnections?: Record<string, string>;
 }
 
 /** Result from createHttpServer. */
@@ -116,10 +121,11 @@ export function createHttpServer(options: HttpServerOptions): HttpServerResult {
     readOnly = false,
     allowedHosts = [],
     corsOrigins = [],
+    mongoConnections = {},
   } = options;
 
   // Session manager for per-session ConnectionManager isolation
-  const sessionManager = new SessionManager();
+  const sessionManager = new SessionManager({ mongoConnections });
 
   // Per-session transports and servers
   const transports = new Map<string, StreamableHTTPServerTransport>();

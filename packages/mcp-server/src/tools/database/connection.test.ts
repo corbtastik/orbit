@@ -144,7 +144,7 @@ describe("ConnectionManager", () => {
       // Should still be using the original connection
       const connections = conn.listConnections();
       const localConn = connections.find((c) => c.name === "local");
-      expect(localConn?.uri).toContain("localhost");
+      expect(localConn?.host).toContain("localhost");
     });
   });
 
@@ -285,11 +285,17 @@ describe("ConnectionManager", () => {
       expect(list.find((c) => c.name === "staging")?.status).toBe("registered");
     });
 
-    it("masks passwords in URI", async () => {
+    it("never exposes the password, and returns no reusable URI", async () => {
       conn.registerConnection("secure", "mongodb://user:secret@host:27017");
       const list = conn.listConnections();
-      expect(list[0].uri).not.toContain("secret");
-      expect(list[0].uri).toContain("****");
+
+      // Nothing in the payload may carry the credential...
+      expect(JSON.stringify(list)).not.toContain("secret");
+      // ...nor a URI a caller could paste back into connect().
+      expect(JSON.stringify(list)).not.toContain("mongodb://");
+
+      expect(list[0].host).toBe("host:27017");
+      expect(list[0].username).toBe("user");
     });
   });
 
@@ -366,6 +372,103 @@ describe("ConnectionManager", () => {
 
       expect(conn.isConnected()).toBe(false);
       expect(conn.isConnectedNamed("staging")).toBe(false);
+    });
+  });
+  describe("active connection tracking", () => {
+    it("has no active connection before connecting", () => {
+      conn.registerConnection("atlas", "mongodb://user:pw@atlas:27017");
+      expect(conn.getActiveConnection()).toBeNull();
+    });
+
+    it("connecting makes that connection active", async () => {
+      await conn.connectNamed("atlas", "mongodb://user:pw@atlas:27017");
+      expect(conn.getActiveConnection()).toBe("atlas");
+    });
+
+    it("the most recent connect wins", async () => {
+      await conn.connectNamed("atlas", "mongodb://user:pw@atlas:27017");
+      await conn.connectNamed("local", "mongodb://localhost:27017");
+      expect(conn.getActiveConnection()).toBe("local");
+    });
+
+    it("re-connecting an already-connected name makes it active again", async () => {
+      await conn.connectNamed("atlas", "mongodb://user:pw@atlas:27017");
+      await conn.connectNamed("local", "mongodb://localhost:27017");
+
+      // No new dial — but it becomes the session's current connection.
+      await conn.connectNamed("atlas");
+      expect(conn.getActiveConnection()).toBe("atlas");
+    });
+
+    it("clears the active connection when it is disconnected", async () => {
+      await conn.connectNamed("atlas", "mongodb://user:pw@atlas:27017");
+      await conn.disconnectNamed("atlas");
+      expect(conn.getActiveConnection()).toBeNull();
+    });
+
+    it("leaves the active connection alone when a different one is disconnected", async () => {
+      await conn.connectNamed("local", "mongodb://localhost:27017");
+      await conn.connectNamed("atlas", "mongodb://user:pw@atlas:27017");
+
+      await conn.disconnectNamed("local");
+      expect(conn.getActiveConnection()).toBe("atlas");
+    });
+
+    it("clears the active connection on disconnectAll", async () => {
+      await conn.connectNamed("atlas", "mongodb://user:pw@atlas:27017");
+      await conn.disconnectAll();
+      expect(conn.getActiveConnection()).toBeNull();
+    });
+
+    it("never reports a connection that is no longer live", async () => {
+      await conn.connectNamed("atlas", "mongodb://user:pw@atlas:27017");
+      await conn.disconnectAll();
+      await conn.connectNamed("local", "mongodb://localhost:27017");
+      expect(conn.getActiveConnection()).toBe("local");
+    });
+  });
+  describe("reconnection after disconnect", () => {
+    it("stays available for reconnection after disconnectNamed", async () => {
+      conn.registerConnection("atlas", "mongodb://user:pw@atlas-host:27017");
+      await conn.connectNamed("atlas");
+      await conn.disconnectNamed("atlas");
+
+      // connectNamed() removes the entry from the registry when it connects,
+      // so this is the cycle that used to lose the connection for good.
+      expect(conn.hasConnection("atlas")).toBe(true);
+      await conn.connectNamed("atlas");
+      expect(conn.isConnectedNamed("atlas")).toBe(true);
+    });
+
+    it("still lists the connection after disconnect, as registered", async () => {
+      conn.registerConnection("atlas", "mongodb://user:pw@atlas-host:27017");
+      await conn.connectNamed("atlas");
+      await conn.disconnectNamed("atlas");
+
+      const entry = conn.listConnections().find((c) => c.name === "atlas");
+      expect(entry?.status).toBe("registered");
+      expect(entry?.host).toBe("atlas-host:27017");
+    });
+
+    it("keeps every connection available after disconnectAll", async () => {
+      await conn.connectNamed("atlas", "mongodb://user:pw@atlas-host:27017");
+      await conn.connectNamed("local", "mongodb://localhost:27017");
+      await conn.disconnectAll();
+
+      expect(conn.hasConnection("atlas")).toBe(true);
+      expect(conn.hasConnection("local")).toBe(true);
+      expect(conn.isConnectedNamed("atlas")).toBe(false);
+    });
+
+    it("connect() switches to the new URI instead of reusing the old one", async () => {
+      // Preserving the registration on disconnect must not make an explicit
+      // switch silently reconnect to the previous host.
+      await conn.connect("mongodb://host1:27017");
+      await conn.connect("mongodb://host2:27017");
+
+      const info = conn.getConnectionInfo();
+      expect(info).toContain("host2");
+      expect(info).not.toContain("host1");
     });
   });
 });

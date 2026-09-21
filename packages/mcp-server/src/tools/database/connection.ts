@@ -29,14 +29,40 @@ const DEFAULT_POOL_OPTIONS: MongoClientOptions = {
   serverSelectionTimeoutMS: 10000,
 };
 
+/** The placeholder sanitizeUri() substitutes for a real password. */
+const MASKED_PASSWORD = "****";
+
+/**
+ * True when a URI carries the redacted password produced by sanitizeUri()
+ * rather than a real credential.
+ */
+function isMaskedUri(connectionString: string): boolean {
+  try {
+    return new URL(connectionString).password === MASKED_PASSWORD;
+  } catch {
+    return false;
+  }
+}
+
 /** Connection status for list-connections output. */
 export type ConnectionStatus = "connected" | "registered";
 
-/** Info about a single connection for listing. */
+/**
+ * Info about a single connection for listing.
+ *
+ * Deliberately structured rather than a URI string: a URI-shaped value invites
+ * callers to paste it straight back into connect(), which cannot work because
+ * the password is never included. Name is the only handle needed to connect.
+ */
 export interface ConnectionInfo {
   name: string;
   status: ConnectionStatus;
-  uri: string; // Sanitized (password masked)
+  /** Host (with port, when the URI specifies one). */
+  host: string;
+  /** Database from the connection string path, when present. */
+  database?: string;
+  /** Username the connection authenticates as, when present. */
+  username?: string;
 }
 
 export class ConnectionManager {
@@ -48,6 +74,15 @@ export class ConnectionManager {
 
   /** Registered but not yet connected — name → connection string. */
   private registeredConnections: Map<string, string> = new Map();
+
+  /**
+   * The connection this session is currently working in.
+   *
+   * Set by connectNamed(), so `connect` behaves the way callers assume: tool
+   * calls that omit a connection name operate on whatever was last connected,
+   * instead of silently requiring the one literally named "default".
+   */
+  private activeConnection: string | null = null;
 
   /** Name of the default connection (for backward compat). */
   private static readonly DEFAULT_NAME = "default";
@@ -81,19 +116,35 @@ export class ConnectionManager {
    * @param connectionString - Optional connection string (required if not registered)
    */
   async connectNamed(name: string, connectionString?: string): Promise<void> {
-    // Already connected? Nothing to do.
+    // Already connected? Nothing to dial, but connecting to a live name still
+    // makes it the one this session is working in.
     if (this.clients.has(name)) {
+      this.activeConnection = name;
       return;
     }
 
-    // Determine the connection string
-    let connStr = connectionString;
-    if (!connStr) {
-      connStr = this.registeredConnections.get(name);
-    }
+    // Determine the connection string.
+    //
+    // A registered name always keeps its stored credentials. Callers — the LLM
+    // especially — sometimes echo the sanitized URI from list-connections back
+    // into connect; letting that win would swap working credentials for a
+    // guaranteed auth failure and drop the registration in the process.
+    const registered = this.registeredConnections.get(name);
+    const connStr = registered ?? connectionString;
+
     if (!connStr) {
       throw new Error(
         `Connection "${name}" is not registered and no connection string provided.`,
+      );
+    }
+
+    // Catches the same echo for names that were never registered, where there
+    // are no stored credentials to fall back to.
+    if (isMaskedUri(connStr)) {
+      throw new Error(
+        `The connection string for "${name}" has a masked password ("****"). ` +
+          "This is the redacted form returned by list-connections, not a usable credential. " +
+          "Connect by registered name without a connectionString, or supply a real one.",
       );
     }
 
@@ -105,17 +156,47 @@ export class ConnectionManager {
     this.connectionStrings.set(name, connStr);
     // Remove from registered since it's now connected
     this.registeredConnections.delete(name);
+    this.activeConnection = name;
+  }
+
+  /**
+   * The connection tool calls use when they don't name one.
+   *
+   * Returns null once the connection is gone, so a closed connection can never
+   * be silently reused.
+   */
+  getActiveConnection(): string | null {
+    if (this.activeConnection && this.clients.has(this.activeConnection)) {
+      return this.activeConnection;
+    }
+    return null;
   }
 
   /**
    * Disconnect a specific named connection.
+   *
+   * The connection stays registered so it can be connected to again.
+   * connectNamed() moves an entry out of the registry when it connects, so
+   * without restoring it here a connect/disconnect cycle would forget the
+   * connection for the rest of the session.
    */
   async disconnectNamed(name: string): Promise<void> {
     const client = this.clients.get(name);
+    const connStr = this.connectionStrings.get(name);
+
     if (client) {
       await client.close();
       this.clients.delete(name);
       this.connectionStrings.delete(name);
+    }
+
+    if (connStr) {
+      this.registeredConnections.set(name, connStr);
+    }
+
+    // Never leave the session pointing at a closed connection.
+    if (this.activeConnection === name) {
+      this.activeConnection = null;
     }
   }
 
@@ -125,14 +206,20 @@ export class ConnectionManager {
   async disconnectAll(): Promise<void> {
     const closePromises: Promise<void>[] = [];
     for (const [name, client] of this.clients) {
+      const connStr = this.connectionStrings.get(name);
       closePromises.push(
         client.close().then(() => {
           this.clients.delete(name);
           this.connectionStrings.delete(name);
+          // Same as disconnectNamed(): stay available for reconnection.
+          if (connStr) {
+            this.registeredConnections.set(name, connStr);
+          }
         }),
       );
     }
     await Promise.all(closePromises);
+    this.activeConnection = null;
   }
 
   /**
@@ -193,7 +280,7 @@ export class ConnectionManager {
       result.push({
         name,
         status: "connected",
-        uri: this.sanitizeUri(connStr),
+        ...this.describeUri(connStr),
       });
     }
 
@@ -202,7 +289,7 @@ export class ConnectionManager {
       result.push({
         name,
         status: "registered",
-        uri: this.sanitizeUri(connStr),
+        ...this.describeUri(connStr),
       });
     }
 
@@ -224,6 +311,14 @@ export class ConnectionManager {
     if (this.clients.has(ConnectionManager.DEFAULT_NAME)) {
       await this.disconnectNamed(ConnectionManager.DEFAULT_NAME);
     }
+
+    // disconnectNamed() deliberately keeps the old connection registered, and
+    // connectNamed() prefers a registered string over a supplied one. This call
+    // is an explicit switch to a new URI, so drop the old registration first —
+    // otherwise switching the default connection would silently reconnect to
+    // the previous host.
+    this.registeredConnections.delete(ConnectionManager.DEFAULT_NAME);
+
     await this.connectNamed(ConnectionManager.DEFAULT_NAME, connectionString);
   }
 
@@ -298,6 +393,28 @@ export class ConnectionManager {
   /**
    * Mask password in a connection URI.
    */
+  /**
+   * Break a connection string into display fields, without producing anything
+   * that can be mistaken for a usable URI.
+   */
+  private describeUri(
+    connectionString: string,
+  ): { host: string; database?: string; username?: string } {
+    try {
+      const url = new URL(connectionString);
+      const database = url.pathname.replace(/^\//, "");
+      return {
+        host: url.host,
+        database: database || undefined,
+        username: url.username || undefined,
+      };
+    } catch {
+      // Old-style or malformed connection string: say nothing rather than
+      // risk echoing credentials out of a string we failed to parse.
+      return { host: "(unparseable connection string)" };
+    }
+  }
+
   private sanitizeUri(connectionString: string): string {
     try {
       const url = new URL(connectionString);
