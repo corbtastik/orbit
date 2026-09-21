@@ -6,7 +6,10 @@
 
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import {
+  StdioClientTransport,
+  getDefaultEnvironment,
+} from "@modelcontextprotocol/sdk/client/stdio.js";
 
 /** Transport type identifier. */
 export type TransportType = "http" | "stdio";
@@ -41,6 +44,39 @@ const DEFAULTS = {
   httpTimeout: 2000,
   stdioCommand: "orbit-mcp-server",
 };
+
+/**
+ * Environment variable prefixes the spawned MCP server needs.
+ *
+ * The MCP SDK's StdioClientTransport defaults to a minimal allowlist
+ * (HOME, LOGNAME, PATH, SHELL, TERM, USER) when no `env` is given, so none of
+ * our configuration reaches the child and it silently falls back to
+ * ~/.orbit-ai/config.json. We forward by prefix rather than handing over all
+ * of process.env — notably, LLM API keys stay in the CLI, which is the only
+ * process that talks to a provider.
+ */
+const FORWARDED_ENV_PREFIXES = ["ATLAS_", "MONGODB_", "ORBIT_"];
+
+/** Env vars that match a forwarded prefix but must not be passed through. */
+const FORWARDED_ENV_DENYLIST = new Set(["ORBIT_LLM_API_KEY"]);
+
+/**
+ * Build the environment for the spawned MCP server: the SDK's safe defaults
+ * plus our own configuration vars.
+ */
+function buildStdioEnv(): Record<string, string> {
+  const env = getDefaultEnvironment();
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) continue;
+    if (FORWARDED_ENV_DENYLIST.has(key)) continue;
+    if (FORWARDED_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      env[key] = value;
+    }
+  }
+
+  return env;
+}
 
 /**
  * Check if HTTP server is reachable.
@@ -91,6 +127,7 @@ function createStdioTransport(options: TransportOptions): TransportResult {
     command,
     args,
     cwd,
+    env: buildStdioEnv(),
     stderr: "inherit", // Pass stderr through to parent
   });
 
